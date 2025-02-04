@@ -1,8 +1,8 @@
+import { Request } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { eq, or } from "drizzle-orm";
 import { AuthProvidersTable, UsersTable } from "../db/schema/db.schema";
-import Env from "../config/app.keys";
 import { db } from "../db";
 import {
   uniqueNamesGenerator,
@@ -121,18 +121,16 @@ export async function registerWithProvider(providerId: string) {
 }
 
 function generateToken(userId: string) {
-  return jwt.sign({ userId }, Env.JWT_SECRET, { expiresIn: "3h" });
+  return jwt.sign({ userId }, "Env.JWT_SECRET", { expiresIn: "3h" });
 }
 
 function verifyToken(token: string) {
   try {
-    return jwt.verify(token, Env.JWT_SECRET);
+    return jwt.verify(token, "Env.JWT_SECRET");
   } catch (error) {
     throw new Error("Invalid or expired token");
   }
 }
-
-import { Request } from "express";
 
 export function getCurrentUser(req: Request) {
   try {

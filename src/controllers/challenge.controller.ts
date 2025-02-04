@@ -4,7 +4,7 @@ import { ChallengePrivacy, NewChallenge, UserChallengeStatus } from "../db/schem
 import { getCurrentUser } from "../services/auth.service";
 
 export const createNewChallenge = async (req: Request, res: Response) => {
-    const userId = req.params.userId;
+    const userId = req.params.userId;             
     const currentChallenge = await getAcceptedChallenge(userId);
 
     if (currentChallenge) {

@@ -11,7 +11,6 @@ export interface IEnv {
   DATABASE_PASSWORD: string;
   DATABASE_USER: string;
   DATABASE_DB: string;
-  JWT_SECRET: string;
 }
 
 const Env: IEnv = {
@@ -25,7 +24,6 @@ const Env: IEnv = {
   DATABASE_PASSWORD: process.env.DATABASE_PASSWORD as string,
   DATABASE_URL: process.env.DATABASE_URL as string,
   DATABASE_USER: process.env.DATABASE_USER as string,
-  JWT_SECRET: process.env.JWT_SECRET as string,
 };
 
 export default Env;
