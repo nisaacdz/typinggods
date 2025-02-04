@@ -1,18 +1,18 @@
-import { logger } from "../extensions/helpers/logger.helper"
+import { logger } from "../extensions/helpers/logger.helper";
 
 const connectToDB = async () => {
-  return connectToMongoDBUsingMongoose()
-}
+  return connectToMongoDBUsingMongoose();
+};
 
 async function connectToMongoDBUsingMongoose() {
   return new Promise((resolve, reject) => {
     try {
-      throw new Error("Method not implemented")
+      throw new Error("Method not implemented");
     } catch (error) {
-      logger.error(error)
-      reject(error)
+      logger.error(error);
+      reject(error);
     }
-  })
+  });
 }
 
-export default connectToDB
+export default connectToDB;

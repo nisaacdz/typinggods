@@ -4,6 +4,6 @@ const HTTP_STATUS_CODE = {
   400: "BAD REQUEST",
   401: "AUTHENTICATION FAILED",
   500: "SERVER ERROR",
-} as const
+} as const;
 
-export default HTTP_STATUS_CODE
+export default HTTP_STATUS_CODE;

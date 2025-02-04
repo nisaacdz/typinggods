@@ -1,15 +1,15 @@
-import { NextFunction, Request, Response } from "express"
+import { NextFunction, Request, Response } from "express";
 
 export const ignoreFavicon = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   if (req.originalUrl.includes("favicon.ico")) {
-    res.status(204).end()
+    res.status(204).end();
   }
-  next()
-}
+  next();
+};
 
 // export const unknownEndpoint = (
 //   req: Request,

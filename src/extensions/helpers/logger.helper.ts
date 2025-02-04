@@ -1,16 +1,16 @@
 const info = (...params: any) => {
-  if (process.env.NODE_ENV === "test") return
+  if (process.env.NODE_ENV === "test") return;
 
-  console.info(...params)
-}
+  console.info(...params);
+};
 
 const error = (...params: any) => {
-  if (process.env.NODE_ENV === "test") return
+  if (process.env.NODE_ENV === "test") return;
 
-  console.error(...params)
-}
+  console.error(...params);
+};
 
 export const logger = {
   info,
   error,
-}
+};

@@ -1,6 +1,6 @@
-import joi from "joi"
-import { ENVIRONMENTS } from "../../config/app.config"
-import Env, { IEnv } from "../../config/app.keys"
+import joi from "joi";
+import { ENVIRONMENTS } from "../../config/app.config";
+import Env, { IEnv } from "../../config/app.keys";
 
 function validateEnvironmentVariables() {
   try {
@@ -32,17 +32,17 @@ function validateEnvironmentVariables() {
       DATABASE_PASSWORD: joi.string(),
       DATABASE_URL: joi.string(),
       DATABASE_USER: joi.string(),
-    })
-    const response = EnvSchema.validate(Env)
+    });
+    const response = EnvSchema.validate(Env);
     if (response.error)
       throw new Error(
         `Env validation error: ${response.error.details
           .map((x) => x.message)
-          .join(", ")}`
-      )
+          .join(", ")}`,
+      );
   } catch (error) {
-    throw error
+    throw error;
   }
 }
 
-export default validateEnvironmentVariables
+export default validateEnvironmentVariables;

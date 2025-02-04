@@ -1,16 +1,17 @@
-import "dotenv/config"
+import "dotenv/config";
 
 export interface IEnv {
-  PORT: number
-  API_VERSION: string
-  API_PATH: string
-  ENVIRONMENT: string
-  ALLOWED_ORIGINS: string[]
-  DATABASE_URL: string
-  DATABASE_HOST: string
-  DATABASE_PASSWORD: string
-  DATABASE_USER: string
-  DATABASE_DB: string
+  PORT: number;
+  API_VERSION: string;
+  API_PATH: string;
+  ENVIRONMENT: string;
+  ALLOWED_ORIGINS: string[];
+  DATABASE_URL: string;
+  DATABASE_HOST: string;
+  DATABASE_PASSWORD: string;
+  DATABASE_USER: string;
+  DATABASE_DB: string;
+  JWT_SECRET: string;
 }
 
 const Env: IEnv = {
@@ -24,6 +25,7 @@ const Env: IEnv = {
   DATABASE_PASSWORD: process.env.DATABASE_PASSWORD as string,
   DATABASE_URL: process.env.DATABASE_URL as string,
   DATABASE_USER: process.env.DATABASE_USER as string,
-}
+  JWT_SECRET: process.env.JWT_SECRET as string,
+};
 
-export default Env
+export default Env;

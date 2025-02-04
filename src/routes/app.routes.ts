@@ -1,13 +1,24 @@
-import { Express } from "express"
+import { Express } from "express";
+
+import express from "express";
+import authRoutes from "./auth.routes";
+import userRoutes from "./user.routes";
 
 class AppRoutes {
-  app: Express
+  app: Express;
 
   constructor(app: Express) {
-    this.app = app
+    this.app = app;
   }
 
-  initializeRoutes() {}
+  initializeRoutes() {
+    this.app.get("/status", (_, res) => {
+      res.status(200).json({ status: "OK" });
+    });
+
+    this.app.use("/auth", authRoutes);
+    this.app.use("/user", userRoutes);
+  }
 }
 
-export default AppRoutes
+export default AppRoutes;

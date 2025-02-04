@@ -1,68 +1,114 @@
 import { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { 
-  pgTable, uuid, varchar, uniqueIndex, timestamp, integer, text, index, 
-  boolean
-} from "drizzle-orm/pg-core"; // <-- Fixed index import
+import {
+  pgTable,
+  uuid,
+  varchar,
+  uniqueIndex,
+  timestamp,
+  text,
+  index,
+  pgEnum,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-// Table for third-party auth providers
-const AuthProviders = pgTable("auth_providers", {
+export const AuthProvidersTable = pgTable("auth_providers", {
   providerId: uuid("provider_id").defaultRandom().primaryKey(),
   providerName: varchar("provider_name", { length: 50 }).notNull().unique(),
-  authenticationUrl: text("authentication_url").notNull(),
+  loginUrl: text("login_url").notNull(),
+  registerUrl: text("register_url").notNull(),
+  logoUrl: text("logo_url"),
 });
 
-type AuthProviderType = InferSelectModel<typeof AuthProviders>;
-type NewAuthProviderType = InferInsertModel<typeof AuthProviders>;
+export type AuthProvider = InferSelectModel<typeof AuthProvidersTable>;
 
-// Updated Users table
-const Users = pgTable("users", {
-  userId: uuid("user_id").defaultRandom().primaryKey(),
-  username: varchar("username", { length: 50 }).notNull(),
-  email: varchar("email", { length: 256 }).unique().notNull(),
-  password: varchar("password", { length: 256 }),
-  authProviderId: uuid("auth_provider_id").references(() => AuthProviders.providerId),
-  externalId: text("external_id"), 
-}, (table) => ({
-  usernameUniqueIdx: uniqueIndex("username_unique_idx")
-    .on(sql`lower(${table.username})`),
-  // Optional: Add a composite unique constraint for external auth
-  externalAuthUniqueIdx: uniqueIndex("external_auth_unique_idx")
-    .on(table.authProviderId, table.externalId)
-    .where(sql`${table.authProviderId} IS NOT NULL`),
-}));
+export const UsersTable = pgTable(
+  "users",
+  {
+    userId: uuid("user_id").defaultRandom().primaryKey(),
+    username: varchar("username", { length: 50 }).notNull(),
+    email: varchar("email", { length: 256 }).unique().notNull(),
+    password: varchar("password", { length: 256 }),
+    authProvider: uuid("auth_provider_id").references(
+      () => AuthProvidersTable.providerId,
+    ),
+    externalId: text("external_id"),
+  },
+  (table) => ({
+    usernameUniqueIdx: uniqueIndex("username_unique_idx").on(
+      sql`lower(${table.username})`,
+    ),
+    externalAuthUniqueIdx: uniqueIndex("external_auth_unique_idx")
+      .on(table.authProvider, table.externalId)
+      .where(sql`${table.authProvider} IS NOT NULL`),
+  }),
+);
 
-type UserType = InferSelectModel<typeof Users>;
-type NewUserType = InferInsertModel<typeof Users>;
+export type User = InferSelectModel<typeof UsersTable>;
+export type NewUser = InferInsertModel<typeof UsersTable>;
+export type UpdateUser = Partial<Omit<User, "userId">>;
 
-// Challenges table (unchanged)
-const Challenges = pgTable("challenges", {
+export const ChallengePrivacy = {
+  Open: "Open",
+  Invitational: "Invitational",
+} as const;
+
+export const ChallengePrivacyEnum = pgEnum(
+  "challenge_privacy",
+  Object.values(ChallengePrivacy) as [string, ...string[]],
+);
+
+export type ChallengePrivacy =
+  | typeof ChallengePrivacy.Open
+  | typeof ChallengePrivacy.Invitational;
+
+export const ChallengesTable = pgTable("challenges", {
   challengeId: uuid("challenge_id").defaultRandom().primaryKey(),
-  createdBy: uuid("created_by").notNull().references(() => Users.userId),
-  capacity: integer("capacity").notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => UsersTable.userId),
+  createdAt: timestamp("created_at")
+    .default(sql`CURRENT_TIMESTAMP`)
+    .notNull(),
   startTime: timestamp("start_time"),
+  privacy: ChallengePrivacyEnum("privacy")
+    .notNull()
+    .default(ChallengePrivacy.Open),
 });
 
-type ChallengeType = InferSelectModel<typeof Challenges>;
-type NewChallengeType = InferInsertModel<typeof Challenges>;
+export type Challenge = InferSelectModel<typeof ChallengesTable>;
+export type NewChallenge = InferInsertModel<typeof ChallengesTable>;
 
-const UserChallenges = pgTable("user_challenges", {
-  userId: uuid("user_id").notNull().references(() => Users.userId),
-  challengeId: uuid("challenge_id").notNull().references(() => Challenges.challengeId),
-}, (table) => ({
-  pk: uniqueIndex("user_challenges_pk").on(table.userId, table.challengeId),
-  userIdIdx: index("user_id_idx").on(table.userId),
-  challengeIdIndex: index("challenge_id_index").on(table.challengeId),
-  accepted: boolean("accepted").default(false).notNull(),
-}));
+export const UserChallengeStatus = {
+  Accepted: "Accepted",
+  Rejected: "Rejected",
+  Pending: "Pending",
+} as const;
 
-type UserChallengeType = InferSelectModel<typeof UserChallenges>;
-type NewUserChallengeType = InferInsertModel<typeof UserChallenges>;
+export const UserChallengeStatusEnum = pgEnum(
+  "user_challenge_status",
+  Object.values(UserChallengeStatus) as [string, ...[string]],
+);
+export type UserChallengeStatusType = typeof UserChallengeStatus;
 
-export {
-  AuthProviders, AuthProviderType, NewAuthProviderType,
-  Users, UserType, NewUserType,
-  Challenges, ChallengeType, NewChallengeType,
-  UserChallenges, UserChallengeType, NewUserChallengeType,
-};
+export const UserChallengesTable = pgTable(
+  "user_challenges",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => UsersTable.userId),
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => ChallengesTable.challengeId),
+  },
+  (table) => ({
+    pk: uniqueIndex("user_challenges_pk").on(table.userId, table.challengeId),
+    userIdIdx: index("user_id_idx").on(table.userId),
+    challengeIdIndex: index("challenge_id_index").on(table.challengeId),
+    status: UserChallengeStatusEnum("status")
+      .notNull()
+      .default(UserChallengeStatus.Pending),
+  }),
+);
+
+export type UserChallenge = InferSelectModel<typeof UserChallengesTable>;
+export type NewUserChallenge = InferInsertModel<typeof UserChallengesTable>;
