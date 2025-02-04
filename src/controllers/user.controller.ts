@@ -1,14 +1,14 @@
 import { Request, Response } from "express";
-import * as UserService from "../services/user.service";
+import { getUserById, searchUsers } from "../services/user.service";
 
 export const getUsers = (req: Request, res: Response) => {
-  const users = UserService.searchUsers(req);
+  const users = searchUsers(req);
   return res.json(users);
 };
 
 export const getUser = (req: Request, res: Response) => {
   const userId = req.params.id;
-  const user = UserService.getUserById(userId);
+  const user = getUserById(userId);
 
   if (!user) {
     return res.status(404).json({ message: "User not found" });

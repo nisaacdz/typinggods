@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import { eq, or } from "drizzle-orm";
 import { AuthProvidersTable, UsersTable } from "../db/schema/db.schema";
 import Env from "../config/app.keys";
-import db from "../db";
+import { db } from "../db";
 import {
   uniqueNamesGenerator,
   adjectives,
@@ -129,5 +129,18 @@ function verifyToken(token: string) {
     return jwt.verify(token, Env.JWT_SECRET);
   } catch (error) {
     throw new Error("Invalid or expired token");
+  }
+}
+
+import { Request } from "express";
+
+export function getCurrentUser(req: Request) {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) return null;
+    const payload = verifyToken(token) as { userId: string };
+    return payload.userId;
+  } catch (error) {
+    return null;
   }
 }

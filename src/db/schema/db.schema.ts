@@ -8,6 +8,7 @@ import {
   text,
   index,
   pgEnum,
+  integer,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -57,9 +58,7 @@ export const ChallengePrivacyEnum = pgEnum(
   Object.values(ChallengePrivacy) as [string, ...string[]],
 );
 
-export type ChallengePrivacy =
-  | typeof ChallengePrivacy.Open
-  | typeof ChallengePrivacy.Invitational;
+export type ChallengePrivacy = typeof ChallengePrivacy[keyof typeof ChallengePrivacy];
 
 export const ChallengesTable = pgTable("challenges", {
   challengeId: uuid("challenge_id").defaultRandom().primaryKey(),
@@ -88,7 +87,7 @@ export const UserChallengeStatusEnum = pgEnum(
   "user_challenge_status",
   Object.values(UserChallengeStatus) as [string, ...[string]],
 );
-export type UserChallengeStatusType = typeof UserChallengeStatus;
+export type UserChallengeStatus = typeof UserChallengeStatus[keyof typeof UserChallengeStatus];
 
 export const UserChallengesTable = pgTable(
   "user_challenges",
@@ -99,16 +98,45 @@ export const UserChallengesTable = pgTable(
     challengeId: uuid("challenge_id")
       .notNull()
       .references(() => ChallengesTable.challengeId),
+    status: UserChallengeStatusEnum("status")
+      .notNull()
+      .default(UserChallengeStatus.Pending),
   },
   (table) => ({
     pk: uniqueIndex("user_challenges_pk").on(table.userId, table.challengeId),
     userIdIdx: index("user_id_idx").on(table.userId),
     challengeIdIndex: index("challenge_id_index").on(table.challengeId),
-    status: UserChallengeStatusEnum("status")
-      .notNull()
-      .default(UserChallengeStatus.Pending),
   }),
 );
 
 export type UserChallenge = InferSelectModel<typeof UserChallengesTable>;
 export type NewUserChallenge = InferInsertModel<typeof UserChallengesTable>;
+
+export const TypingSessionsTable = pgTable(
+  "typing_sessions",
+  {
+    sessionId: uuid("session_id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => UsersTable.userId),
+    challengeId: uuid("challenge_id").references(
+      () => ChallengesTable.challengeId,
+    ),
+    startTime: timestamp("start_time").notNull(),
+    endTime: timestamp("end_time"),
+    typingText: text("typing_text").notNull(),
+    currentPos: integer("current_pos").notNull().default(0),
+    correctStrokes: varchar("correct_strokes", { length: 256 }),
+  },
+
+  (table) => ({
+    // Allows only one session per user at a time
+    userIdIndex: uniqueIndex("userId_unique_idx").on(table.userId),
+    // Allows fast indexing by challengeId
+    challengeIdIndex: index("challenge_id_index").on(table.challengeId),
+  }),
+);
+
+export type TypingSession = InferSelectModel<typeof TypingSessionsTable>;
+export type NewTypingSession = InferInsertModel<typeof TypingSessionsTable>;
+export type UpdateTypingSession = Partial<Omit<TypingSession, "sessionId">>;

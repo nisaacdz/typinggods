@@ -47,9 +47,7 @@
         "auth_providers_provider_name_unique": {
           "name": "auth_providers_provider_name_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider_name"
-          ]
+          "columns": ["provider_name"]
         }
       }
     },
@@ -98,12 +96,8 @@
           "name": "challenges_created_by_users_user_id_fk",
           "tableFrom": "challenges",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -186,12 +180,8 @@
           "name": "user_challenges_user_id_users_user_id_fk",
           "tableFrom": "user_challenges",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -199,12 +189,8 @@
           "name": "user_challenges_challenge_id_challenges_challenge_id_fk",
           "tableFrom": "user_challenges",
           "tableTo": "challenges",
-          "columnsFrom": [
-            "challenge_id"
-          ],
-          "columnsTo": [
-            "challenge_id"
-          ],
+          "columnsFrom": ["challenge_id"],
+          "columnsTo": ["challenge_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -298,12 +284,8 @@
           "name": "users_auth_provider_id_auth_providers_provider_id_fk",
           "tableFrom": "users",
           "tableTo": "auth_providers",
-          "columnsFrom": [
-            "auth_provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["auth_provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -313,9 +295,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       }
     }
@@ -324,19 +304,12 @@
     "public.challenge_privacy": {
       "name": "challenge_privacy",
       "schema": "public",
-      "values": [
-        "Open",
-        "Invitational"
-      ]
+      "values": ["Open", "Invitational"]
     },
     "public.user_challenge_status": {
       "name": "user_challenge_status",
       "schema": "public",
-      "values": [
-        "Accepted",
-        "Rejected",
-        "Pending"
-      ]
+      "values": ["Accepted", "Rejected", "Pending"]
     }
   },
   "schemas": {},
