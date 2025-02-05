@@ -4,20 +4,19 @@ import {
   ChallengePrivacy,
   ChallengesTable,
   NewChallenge,
+  TypingSessionsTable,
   UserChallengesTable,
   UserChallengeStatus,
+  UserTypingSessionsTable,
 } from "../db/schema/db.schema";
 
-export const getCurrentParticipants = async (challengeId: string) => {
+export const getActiveParticipants = async (challengeId: string) => {
   return await db
-    .select()
-    .from(UserChallengesTable)
-    .where(
-      and(
-        eq(UserChallengesTable.challengeId, challengeId),
-        eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
-      ),
-    );
+    .select({
+      userId: UserTypingSessionsTable.userId,
+    })
+    .from(UserTypingSessionsTable)
+    .where(eq(UserTypingSessionsTable.challengeId, challengeId));
 };
 
 export const getChallengeById = async (challengeId: string) => {
@@ -25,14 +24,23 @@ export const getChallengeById = async (challengeId: string) => {
     .select()
     .from(ChallengesTable)
     .where(eq(ChallengesTable.challengeId, challengeId));
-  
+
   return challenge ?? null;
 };
 
 export const createChallenge = async (challenge: NewChallenge) => {
+  const [session] = await db
+    .insert(TypingSessionsTable)
+    .values({ typingText: null, startTime: challenge.startTime })
+    .returning();
+
+  if (!session) {
+    throw new Error("Failed to create session");
+  }
+
   const [createdChallenge] = await db
     .insert(ChallengesTable)
-    .values({ ...challenge })
+    .values({ ...challenge, sessionId: session.sessionId })
     .returning();
 
   if (!createdChallenge) {
@@ -42,7 +50,11 @@ export const createChallenge = async (challenge: NewChallenge) => {
   return createdChallenge;
 };
 
-export const addParticipant = async (challengeId: string, userId: string, status: UserChallengeStatus = UserChallengeStatus.Pending) => {
+export const addParticipant = async (
+  challengeId: string,
+  userId: string,
+  status: UserChallengeStatus = UserChallengeStatus.Pending,
+) => {
   const [existingParticipant] = await db
     .select()
     .from(UserChallengesTable)
@@ -73,59 +85,16 @@ export const acceptChallenge = async (challengeId: string, userId: string) => {
   const [participant] = await db
     .update(UserChallengesTable)
     .set({ status: UserChallengeStatus.Accepted })
-    .where(and(
-      eq(UserChallengesTable.userId, userId),
-      eq(UserChallengesTable.challengeId, challengeId),
-    ))
+    .where(
+      and(
+        eq(UserChallengesTable.userId, userId),
+        eq(UserChallengesTable.challengeId, challengeId),
+      ),
+    )
     .returning();
 
   if (!participant) {
     throw new Error("Failed to accept challenge");
-  }
-
-  return challenge;
-}
-
-export const startChallenge = async (challengeId: string) => {
-  const [challenge] = await db
-    .select()
-    .from(ChallengesTable)
-    .where(eq(ChallengesTable.challengeId, challengeId))
-    .limit(1);
-
-  if (!challenge) {
-    throw new Error("Challenge not found");
-  }
-
-  const participants = await getCurrentParticipants(challengeId);
-
-  if (!participants.length) {
-    throw new Error("Challenge has no participants");
-  }
-
-  // Current time plus discrepancy = 100ms
-  const startTime = Date.now() + 200;
-
-  const [startedChallenge] = await db
-    .update(ChallengesTable)
-    .set({ startTime: new Date(startTime) })
-    .where(eq(ChallengesTable.challengeId, challengeId))
-    .returning();
-
-  if (!startedChallenge || !startedChallenge.startTime) {
-    throw new Error("Failed to start challenge");
-  }
-
-  for (const participant of participants) {
-    const [updatedParticipant] = await db
-      .update(UserChallengesTable)
-      .set({ status: "Pending" })
-      .where(eq(UserChallengesTable.userId, participant.userId))
-      .returning();
-
-    if (!updatedParticipant) {
-      throw new Error("Failed to update participant status");
-    }
   }
 
   return challenge;
@@ -140,10 +109,11 @@ export const getAcceptedChallenge = async (userId: string) => {
         eq(UserChallengesTable.userId, userId),
         eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
       ),
-    ).limit(1);
+    )
+    .limit(1);
 
-    return challenge ?? null;
-}
+  return challenge ?? null;
+};
 
 // Get all user challenges that userId has been invited to
 export const getUserChallenges = async (userId: string) => {
@@ -151,7 +121,7 @@ export const getUserChallenges = async (userId: string) => {
     .select()
     .from(UserChallengesTable)
     .where(eq(UserChallengesTable.userId, userId));
-}
+};
 
 export const getOpenChallenges = async (req: any) => {
   const { page = 1, pageSize = 10 } = req.query;
@@ -160,12 +130,12 @@ export const getOpenChallenges = async (req: any) => {
   let query = db.select().from(ChallengesTable);
 
   let dataQuery = query
-      .where(eq(ChallengesTable.privacy, ChallengePrivacy.Open))
-      .offset(offset)
-      .limit(Number(pageSize))
-      .prepare("data")
-      .execute();
-  
+    .where(eq(ChallengesTable.privacy, ChallengePrivacy.Open))
+    .offset(offset)
+    .limit(Number(pageSize))
+    .prepare("data")
+    .execute();
+
   const countQuery = db
     .select({ count: sql<number>`count(*)` })
     .from(ChallengesTable)
@@ -181,10 +151,23 @@ export const getOpenChallenges = async (req: any) => {
     page: Number(page),
     pageSize: Number(pageSize),
   };
-}
+};
+
+export const getAcceptedParticipants = async (challengeId: string) => {
+  return await db
+    .select()
+    .from(UserChallengesTable)
+    .where(
+      and(
+        eq(UserChallengesTable.challengeId, challengeId),
+        eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+      ),
+    );
+};
 
 export const getAllChallenges = async (req: any) => {
-    // I want to fetch both invitational and open challenges
-    // Also don't want to include duplicates (no challengeId should occur more than once)
-    const { page = 1, pageSize = 10 } = req.query;
-}
+  // I want to fetch both invitational and open challenges
+  // Also don't want to include duplicates (no challengeId should occur more than once)
+  const { page = 1, pageSize = 10 } = req.query;
+  const offset = (Number(page) - 1) * Number(pageSize);
+};

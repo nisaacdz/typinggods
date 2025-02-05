@@ -2,7 +2,7 @@ import { Request } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { eq, or } from "drizzle-orm";
-import { AuthProvidersTable, UsersTable } from "../db/schema/db.schema";
+import { AuthProvidersTable, User, UsersTable } from "../db/schema/db.schema";
 import { db } from "../db";
 import {
   uniqueNamesGenerator,
@@ -54,7 +54,7 @@ export async function login(email: string, password: string) {
     throw new Error("Invalid email or password");
   }
 
-  return generateToken(user.userId);
+  return generateToken(user);
 }
 
 export async function loginWithProvider(
@@ -120,24 +120,40 @@ export async function registerWithProvider(providerId: string) {
   return newUser[0];
 }
 
-function generateToken(userId: string) {
-  return jwt.sign({ userId }, "Env.JWT_SECRET", { expiresIn: "3h" });
+function generateToken({ userId, username, email }: User) {
+  return jwt.sign(
+    {
+      userId,
+      username,
+      email,
+      password: null,
+      authProvider: null,
+      externalId: null,
+    },
+    "Env.JWT_SECRET",
+    { expiresIn: "3h" },
+  );
 }
 
-function verifyToken(token: string) {
+export function verifyToken(token: string) {
   try {
-    return jwt.verify(token, "Env.JWT_SECRET");
+    return jwt.verify(token, process.env.JWT_SECRET as string);
   } catch (error) {
     throw new Error("Invalid or expired token");
   }
 }
 
-export function getCurrentUser(req: Request) {
+export function getCurrentUser(req: Request | string) {
   try {
-    const token = req.headers.authorization?.split(" ")[1];
+    let token;
+    if (typeof req === "string") {
+      token = req;
+    } else {
+      token = req.headers.authorization?.split(" ")[1];
+    }
     if (!token) return null;
-    const payload = verifyToken(token) as { userId: string };
-    return payload.userId;
+    const payload = verifyToken(token) as User;
+    return payload;
   } catch (error) {
     return null;
   }

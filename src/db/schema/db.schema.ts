@@ -11,6 +11,7 @@ import {
   integer,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { da, en } from "@faker-js/faker";
 
 export const AuthProvidersTable = pgTable("auth_providers", {
   providerId: uuid("provider_id").defaultRandom().primaryKey(),
@@ -58,24 +59,31 @@ export const ChallengePrivacyEnum = pgEnum(
   Object.values(ChallengePrivacy) as [string, ...string[]],
 );
 
-export type ChallengePrivacy = typeof ChallengePrivacy[keyof typeof ChallengePrivacy];
+export type ChallengePrivacy =
+  (typeof ChallengePrivacy)[keyof typeof ChallengePrivacy];
 
 export const ChallengesTable = pgTable("challenges", {
   challengeId: uuid("challenge_id").defaultRandom().primaryKey(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => TypingSessionsTable.sessionId),
   createdBy: uuid("created_by")
     .notNull()
     .references(() => UsersTable.userId),
   createdAt: timestamp("created_at")
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
-  startTime: timestamp("start_time"),
+  startTime: timestamp("start_time").notNull(),
   privacy: ChallengePrivacyEnum("privacy")
     .notNull()
     .default(ChallengePrivacy.Open),
 });
 
 export type Challenge = InferSelectModel<typeof ChallengesTable>;
-export type NewChallenge = InferInsertModel<typeof ChallengesTable>;
+export type NewChallenge = Omit<
+  Omit<InferInsertModel<typeof ChallengesTable>, "challengeId">,
+  "sessionId"
+>;
 
 export const UserChallengeStatus = {
   Accepted: "Accepted",
@@ -87,7 +95,8 @@ export const UserChallengeStatusEnum = pgEnum(
   "user_challenge_status",
   Object.values(UserChallengeStatus) as [string, ...[string]],
 );
-export type UserChallengeStatus = typeof UserChallengeStatus[keyof typeof UserChallengeStatus];
+export type UserChallengeStatus =
+  (typeof UserChallengeStatus)[keyof typeof UserChallengeStatus];
 
 export const UserChallengesTable = pgTable(
   "user_challenges",
@@ -112,31 +121,37 @@ export const UserChallengesTable = pgTable(
 export type UserChallenge = InferSelectModel<typeof UserChallengesTable>;
 export type NewUserChallenge = InferInsertModel<typeof UserChallengesTable>;
 
-export const TypingSessionsTable = pgTable(
+export const TypingSessionsTable = pgTable("typing_sessions_data", {
+  sessionId: uuid("session_id").defaultRandom().primaryKey(),
+  typingText: text("typing_text"),
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+});
+
+export type TypingSessionData = InferSelectModel<typeof TypingSessionsTable>;
+export type NewTypingSessionData = InferInsertModel<typeof TypingSessionsTable>;
+
+export const UserTypingSessionsTable = pgTable(
   "typing_sessions",
   {
-    sessionId: uuid("session_id").defaultRandom().primaryKey(),
+    userSessionId: uuid("session_id").defaultRandom().primaryKey(),
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => ChallengesTable.challengeId),
     userId: uuid("user_id")
       .notNull()
       .references(() => UsersTable.userId),
-    challengeId: uuid("challenge_id").references(
-      () => ChallengesTable.challengeId,
-    ),
-    startTime: timestamp("start_time").notNull(),
     endTime: timestamp("end_time"),
-    typingText: text("typing_text").notNull(),
     currentPos: integer("current_pos").notNull().default(0),
-    correctStrokes: varchar("correct_strokes", { length: 256 }),
+    correctStrokes: integer("correct_strokes").notNull().default(0),
   },
 
   (table) => ({
     // Allows only one session per user at a time
     userIdIndex: uniqueIndex("userId_unique_idx").on(table.userId),
-    // Allows fast indexing by challengeId
-    challengeIdIndex: index("challenge_id_index").on(table.challengeId),
   }),
 );
 
-export type TypingSession = InferSelectModel<typeof TypingSessionsTable>;
-export type NewTypingSession = InferInsertModel<typeof TypingSessionsTable>;
+export type TypingSession = InferSelectModel<typeof UserTypingSessionsTable>;
+export type NewTypingSession = InferInsertModel<typeof UserTypingSessionsTable>;
 export type UpdateTypingSession = Partial<Omit<TypingSession, "sessionId">>;

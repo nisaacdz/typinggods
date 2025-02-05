@@ -1,6 +1,12 @@
-import { eq, ilike, or, sql } from "drizzle-orm";
+import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { UpdateUser, UsersTable } from "../db/schema/db.schema";
+import {
+  UpdateUser,
+  User,
+  UserChallengesTable,
+  UserChallengeStatus,
+  UsersTable,
+} from "../db/schema/db.schema";
 
 import { Request } from "express";
 
@@ -83,11 +89,7 @@ export async function getUserById(userId: string) {
     .from(UsersTable)
     .where(eq(UsersTable.userId, userId));
 
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  return user;
+  return user ?? null;
 }
 
 export async function getUser(username: string) {
@@ -101,4 +103,27 @@ export async function getUser(username: string) {
   }
 
   return user;
+}
+
+export async function acceptedInvite(user: User, challengeId: string) {
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const [userChallenge] = await db
+    .select()
+    .from(UserChallengesTable)
+    .where(
+      and(
+        eq(UserChallengesTable.userId, user.userId),
+        eq(UserChallengesTable.challengeId, challengeId),
+        eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+      ),
+    )
+    .limit(1);
+
+  if (!userChallenge) {
+    throw new Error("User is not in the challenge");
+  }
+  return userChallenge;
 }
