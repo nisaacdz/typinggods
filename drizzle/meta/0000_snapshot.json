@@ -1,5 +1,5 @@
 {
-  "id": "ac148ec8-3288-43a4-8ca2-786a402d27d8",
+  "id": "d05202d5-9252-4ee6-93f7-a932b78b2491",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -21,14 +21,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "authentication_url": {
-          "name": "authentication_url",
+        "login_url": {
+          "name": "login_url",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "registration_url": {
-          "name": "registration_url",
+        "register_url": {
+          "name": "register_url",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -47,7 +47,9 @@
         "auth_providers_provider_name_unique": {
           "name": "auth_providers_provider_name_unique",
           "nullsNotDistinct": false,
-          "columns": ["provider_name"]
+          "columns": [
+            "provider_name"
+          ]
         }
       }
     },
@@ -62,6 +64,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -73,13 +81,13 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
+          "default": "now()"
         },
-        "start_time": {
-          "name": "start_time",
+        "scheduled_time": {
+          "name": "scheduled_time",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "privacy": {
           "name": "privacy",
@@ -88,6 +96,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'Open'"
+        },
+        "duration_seconds": {
+          "name": "duration_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
@@ -96,8 +110,131 @@
           "name": "challenges_created_by_users_user_id_fk",
           "tableFrom": "challenges",
           "tableTo": "users",
-          "columnsFrom": ["created_by"],
-          "columnsTo": ["user_id"],
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.typing_sessions": {
+      "name": "typing_sessions",
+      "schema": "",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "challenge_id": {
+          "name": "challenge_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_time": {
+          "name": "start_time",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "end_time": {
+          "name": "end_time",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wpm": {
+          "name": "wpm",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accuracy": {
+          "name": "accuracy",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_keystrokes": {
+          "name": "total_keystrokes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "correct_position": {
+          "name": "correct_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "current_position": {
+          "name": "current_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "active_session_idx": {
+          "name": "active_session_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"typing_sessions\".\"end_time\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "typing_sessions_user_id_users_user_id_fk": {
+          "name": "typing_sessions_user_id_users_user_id_fk",
+          "tableFrom": "typing_sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "typing_sessions_challenge_id_challenges_challenge_id_fk": {
+          "name": "typing_sessions_challenge_id_challenges_challenge_id_fk",
+          "tableFrom": "typing_sessions",
+          "tableTo": "challenges",
+          "columnsFrom": [
+            "challenge_id"
+          ],
+          "columnsTo": [
+            "challenge_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -120,47 +257,32 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "user_challenge_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Pending'"
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "user_challenges_pk": {
-          "name": "user_challenges_pk",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "challenge_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "user_id_idx": {
-          "name": "user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "challenge_id_index": {
-          "name": "challenge_id_index",
+        "challenge_idx": {
+          "name": "challenge_idx",
           "columns": [
             {
               "expression": "challenge_id",
@@ -180,8 +302,12 @@
           "name": "user_challenges_user_id_users_user_id_fk",
           "tableFrom": "user_challenges",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["user_id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -189,8 +315,84 @@
           "name": "user_challenges_challenge_id_challenges_challenge_id_fk",
           "tableFrom": "user_challenges",
           "tableTo": "challenges",
-          "columnsFrom": ["challenge_id"],
-          "columnsTo": ["challenge_id"],
+          "columnsFrom": [
+            "challenge_id"
+          ],
+          "columnsTo": [
+            "challenge_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_challenges_user_id_challenge_id_pk": {
+          "name": "user_challenges_user_id_challenge_id_pk",
+          "columns": [
+            "user_id",
+            "challenge_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {}
+    },
+    "public.user_stats": {
+      "name": "user_stats",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "total_completed": {
+          "name": "total_completed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "average_wpm": {
+          "name": "average_wpm",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "average_accuracy": {
+          "name": "average_accuracy",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "total_keystrokes": {
+          "name": "total_keystrokes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_active": {
+          "name": "last_active",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_stats_user_id_users_user_id_fk": {
+          "name": "user_stats_user_id_users_user_id_fk",
+          "tableFrom": "user_stats",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -284,8 +486,12 @@
           "name": "users_auth_provider_id_auth_providers_provider_id_fk",
           "tableFrom": "users",
           "tableTo": "auth_providers",
-          "columnsFrom": ["auth_provider_id"],
-          "columnsTo": ["provider_id"],
+          "columnsFrom": [
+            "auth_provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -295,7 +501,9 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": ["email"]
+          "columns": [
+            "email"
+          ]
         }
       }
     }
@@ -304,12 +512,21 @@
     "public.challenge_privacy": {
       "name": "challenge_privacy",
       "schema": "public",
-      "values": ["Open", "Invitational"]
+      "values": [
+        "Open",
+        "Invitational"
+      ]
     },
     "public.user_challenge_status": {
       "name": "user_challenge_status",
       "schema": "public",
-      "values": ["Accepted", "Rejected", "Pending"]
+      "values": [
+        "Accepted",
+        "Rejected",
+        "Pending",
+        "Completed",
+        "Abondoned"
+      ]
     }
   },
   "schemas": {},

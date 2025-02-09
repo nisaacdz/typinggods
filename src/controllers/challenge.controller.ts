@@ -1,114 +1,113 @@
 import { Request, Response } from "express";
 import {
-  createChallenge,
-  addParticipant,
-  getUserChallenges,
-  acceptChallenge,
-  getChallengeById,
-  getAcceptedChallenge,
-  getAllChallenges,
-  getOpenChallenges,
-} from "../services/challenges.service";
-import {
   ChallengePrivacy,
+  ListedChallenge,
   NewChallenge,
   UserChallengeStatus,
 } from "../db/schema/db.schema";
-import { getCurrentUser } from "../services/auth.service";
+import {
+  getCurrentUser,
+  getCurrentUserFromRequest,
+  getToken,
+} from "../services/auth.service";
+import { AppService } from "../services/index.service";
+import { DefaultPage, DefaultPageSize } from "../util";
 
-export const createNewChallenge = async (req: Request, res: Response) => {
-  const userId = req.params.userId;
-  const currentChallenge = await getAcceptedChallenge(userId);
+export class ChallengeController {
+  constructor(private readonly appService: AppService) {}
 
-  if (currentChallenge) {
-    return res.status(400).json({ message: "User is already in a challenge" });
+  async createChallenge(req: Request, res: Response) {
+    const token = getToken(req);
+    if (!token) {
+      return res.status(401).send("Unauthorized");
+    }
+    const user = getCurrentUser(token);
+    if (!user) {
+      return res.status(401).send("Unauthorized");
+    }
+
+    const { privacy, scheduledTime, duration } = req.body;
+
+    const text = this.appService.textService.generateTypingText();
+
+    const newChallenge: NewChallenge = {
+      privacy,
+      createdBy: user.userId,
+      text,
+      scheduledTime,
+      duration,
+    };
+
+    const createdChallenge =
+      await this.appService.challengeService.createChallenge(newChallenge);
+
+    if (!createdChallenge) {
+      return res.status(500).send("Failed to create challenge");
+    }
+
+    return res.status(201).send({ challenge: createdChallenge });
   }
 
-  const challenge = req.body.challenge as NewChallenge; // maybe zod validation middleware before this runs
-  const otherParticipants = req.body.participants as string[];
+  async getChallenge(req: Request, res: Response) {
+    const user = getCurrentUserFromRequest(req);
+    if (!user) {
+      return res.status(401).send("Unauthorized");
+    }
 
-  if (!challenge || !otherParticipants) {
-    // May need to allow empty otherParticipants list
-    return res.status(400).json({ message: "Invalid request" });
+    const challengeId = req.params.id;
+    const challenge =
+      await this.appService.challengeService.getChallengeById(challengeId);
+
+    if (!challenge) {
+      return res.status(404).send("Challenge not found");
+    }
+
+    if (challenge.privacy === ChallengePrivacy.Invitational) {
+      const userChallenge =
+        await this.appService.challengeService.getUserChallenge(
+          user.userId,
+          challengeId,
+        );
+      if (!userChallenge) {
+        return res.status(403).send("Unauthorized");
+      }
+    }
+
+    return res.status(200).send(challenge);
   }
 
-  try {
-    const newChallenge = await createChallenge(challenge);
-    await addParticipant(newChallenge.challengeId, userId);
-    otherParticipants.forEach(async (participant) => {
-      await addParticipant(newChallenge.challengeId, participant);
-    });
-    return res.json(newChallenge);
-  } catch (error) {
-    return res.status(500).json({ message: "Internal server error" });
+  async getChallenges(req: Request, res: Response) {
+    const user = getCurrentUserFromRequest(req);
+    if (!user) {
+      return res.status(401).send("Unauthorized");
+    }
+
+    const page = req.query.page
+      ? parseInt(req.query.page as string)
+      : DefaultPage;
+    const pageSize = req.query.pageSize
+      ? parseInt(req.query.pageSize as string)
+      : DefaultPageSize;
+
+    // First look for all Invitational challenges that the user is a part of (Paginate)
+    const invitationalChallenges =
+      await this.appService.challengeService.getInvitedChallenges(
+        user.userId,
+        page,
+        pageSize,
+      );
+    let remainingLimit = pageSize - invitationalChallenges.length;
+    let publicChallenges: ListedChallenge[] = [];
+
+    // Then look for all Open challenges (if pagination is not complete)
+    if (remainingLimit > 0) {
+      publicChallenges =
+        await this.appService.challengeService.getPublicChallenges(
+          remainingLimit,
+        );
+    }
+
+    const challenges = invitationalChallenges.concat(publicChallenges);
+    return res.status(200).send(challenges);
   }
-};
-
-export const joinChallenge = async (req: Request, res: Response) => {
-  const userId = req.params.userId;
-  const challengeId = req.params.challengeId;
-
-  const currentChallenge = await getAcceptedChallenge(userId);
-
-  if (currentChallenge) {
-    return res.status(400).json({ message: "User is already in a challenge" });
-  }
-
-  const challenge = await getChallengeById(challengeId);
-
-  if (!challenge) {
-    return res.status(400).json({ message: "Challenge not found" });
-  }
-
-  if (challenge.privacy === ChallengePrivacy.Invitational) {
-    // should return unauthorized error
-    return res.status(401).json({ message: "Challenge is invitational" });
-  }
-
-  try {
-    await addParticipant(challengeId, userId, UserChallengeStatus.Accepted);
-    return res.json({ message: "User joined challenge" });
-  } catch (error) {
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const acceptUserChallenge = async (req: Request, res: Response) => {
-  const userId = req.params.userId;
-  const challengeId = req.params.challengeId;
-
-  const challenge = await getAcceptedChallenge(userId);
-
-  if (!challenge || challenge.challengeId !== challengeId) {
-    return res.status(400).json({ message: "User is not in the challenge" });
-  }
-
-  try {
-    await acceptChallenge(challengeId, userId);
-    return res.json({ message: "User accepted challenge" });
-  } catch (error) {
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const getOpenUserChallenges = async (req: Request, res: Response) => {
-  const challenges = getOpenChallenges(req);
-  return res.json(challenges);
-};
-
-export const getInvitationalChallenges = async (
-  req: Request,
-  res: Response,
-) => {
-  const userId = getCurrentUser(req)?.userId;
-  if (!userId) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  const challenges = await getUserChallenges(userId);
-  return res.json(challenges);
-};
-
-export const getAllUserChallenges = async (req: Request, res: Response) => {
-  const allChallenges = await getAllChallenges(req);
-  return res.json(allChallenges);
-};
+}

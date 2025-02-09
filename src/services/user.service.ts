@@ -1,129 +1,131 @@
-import { and, eq, ilike, or, sql } from "drizzle-orm";
-import { db } from "../db";
+import { type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { eq, sql } from "drizzle-orm";
 import {
-  UpdateUser,
-  User,
-  UserChallengesTable,
-  UserChallengeStatus,
+  type User,
+  type TypingSession,
   UsersTable,
+  UserStatsTable,
+  NewUser,
 } from "../db/schema/db.schema";
+import { DatabaseError, NotFoundError, ConflictError } from "../errors";
 
-import { Request } from "express";
+export class UserService {
+  constructor(private readonly db: NodePgDatabase) {}
 
-export async function searchUsers(req: Request) {
-  const { search, page = 1, pageSize = 10 } = req.query;
-  const offset = (Number(page) - 1) * Number(pageSize);
-
-  let query = db.select().from(UsersTable);
-
-  let dataQuery;
-
-  if (search) {
-    const searchTerm = `%${search}%`;
-    dataQuery = query
-      .where(
-        or(
-          ilike(UsersTable.username, searchTerm),
-          ilike(UsersTable.email, searchTerm),
-          sql`lower(${UsersTable.username} || ' ' || ${UsersTable.email}) LIKE lower(${"%" + search + "%"})`,
-        ),
-      )
-      .offset(offset)
-      .limit(Number(pageSize))
-      .prepare("data")
-      .execute();
-  } else {
-    dataQuery = query
-      .offset(offset)
-      .limit(Number(pageSize))
-      .prepare("data")
-      .execute();
+  async createUser(userData: NewUser): Promise<User> {
+    try {
+      const [user] = await this.db
+        .insert(UsersTable)
+        .values(userData)
+        .returning();
+      return user;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("unique")) {
+        throw new ConflictError(
+          "User with this email or username already exists",
+        );
+      }
+      throw new DatabaseError("Failed to create user");
+    }
   }
 
-  const countQuery = db
-    .select({ count: sql<number>`count(*)` })
-    .from(UsersTable)
-    .prepare("count")
-    .execute();
+  async getUserById(userId: string): Promise<User> {
+    const [user] = await this.db
+      .select()
+      .from(UsersTable)
+      .where(eq(UsersTable.userId, userId))
+      .limit(1);
 
-  const [data, totalResult] = await Promise.all([dataQuery, countQuery]);
+    if (!user) throw new NotFoundError("User not found");
+    return user;
+  }
 
-  return {
-    data,
-    total: Number(totalResult[0]?.count ?? 0),
-    page: Number(page),
-    pageSize: Number(pageSize),
-  };
+  async getUserByEmail(email: string): Promise<User> {
+    const [user] = await this.db
+      .select()
+      .from(UsersTable)
+      .where(eq(UsersTable.email, email.toLowerCase()))
+      .limit(1);
+
+    if (!user) throw new NotFoundError("User not found");
+    return user;
+  }
+
+  async updateUser(userId: string, updateData: Partial<User>): Promise<User> {
+    const [user] = await this.db
+      .update(UsersTable)
+      .set(updateData)
+      .where(eq(UsersTable.userId, userId))
+      .returning();
+
+    if (!user) throw new NotFoundError("User not found");
+    return user;
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    await this.db.delete(UsersTable).where(eq(UsersTable.userId, userId));
+  }
 }
 
-export async function updateUser(userId: string, data: UpdateUser) {
-  const [updatedUser] = await db
-    .update(UsersTable)
-    .set(data)
-    .where(eq(UsersTable.userId, userId))
-    .returning();
+export class UserStatsService {
+  constructor(private readonly db: NodePgDatabase) {}
 
-  if (!updatedUser) {
-    throw new Error("Failed to update user");
+  async getStats(userId: string) {
+    const [stats] = await this.db
+      .select()
+      .from(UserStatsTable)
+      .where(eq(UserStatsTable.userId, userId))
+      .limit(1);
+
+    if (!stats) throw new NotFoundError("User stats not found");
+    return stats;
   }
 
-  return updatedUser;
-}
+  async updateStats(session: TypingSession) {
+    if (!session.endTime || session.endTime > new Date()) return;
 
-export async function deleteUser(userId: string) {
-  const [deletedUser] = await db
-    .delete(UsersTable)
-    .where(eq(UsersTable.userId, userId))
-    .returning();
+    await this.db.transaction(async (tx) => {
+      const stats = await tx
+        .select()
+        .from(UserStatsTable)
+        .where(eq(UserStatsTable.userId, session.userId))
+        .limit(1);
 
-  if (!deletedUser) {
-    throw new Error("Failed to delete user");
+      const newTotal = stats[0]?.totalCompleted || 0 + 1;
+      const newAverageWpm = Math.round(
+        ((stats[0]?.averageWpm || 0) * (newTotal - 1) + session.wpm!) /
+          newTotal,
+      );
+      const newAverageAccuracy = Math.round(
+        ((stats[0]?.averageAccuracy || 0) * (newTotal - 1) +
+          session.accuracy!) /
+          newTotal,
+      );
+
+      await tx
+        .insert(UserStatsTable)
+        .values({
+          userId: session.userId,
+          totalCompleted: newTotal,
+          averageWpm: newAverageWpm,
+          averageAccuracy: newAverageAccuracy,
+          totalKeystrokes: sql`${UserStatsTable.totalKeystrokes} + ${
+            session.correctKeystrokes + session.incorrectKeystrokes
+          }`,
+          lastActive: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: UserStatsTable.userId,
+          set: {
+            totalCompleted: newTotal,
+            averageWpm: newAverageWpm,
+            averageAccuracy: newAverageAccuracy,
+            totalKeystrokes: sql`${UserStatsTable.totalKeystrokes} + ${
+              session.correctKeystrokes + session.incorrectKeystrokes
+            }`,
+            lastActive: new Date(),
+          },
+        });
+    });
   }
-
-  return deletedUser;
-}
-
-export async function getUserById(userId: string) {
-  const [user] = await db
-    .select()
-    .from(UsersTable)
-    .where(eq(UsersTable.userId, userId));
-
-  return user ?? null;
-}
-
-export async function getUser(username: string) {
-  const [user] = await db
-    .select()
-    .from(UsersTable)
-    .where(eq(UsersTable.username, username));
-
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  return user;
-}
-
-export async function acceptedInvite(user: User, challengeId: string) {
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  const [userChallenge] = await db
-    .select()
-    .from(UserChallengesTable)
-    .where(
-      and(
-        eq(UserChallengesTable.userId, user.userId),
-        eq(UserChallengesTable.challengeId, challengeId),
-        eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
-      ),
-    )
-    .limit(1);
-
-  if (!userChallenge) {
-    throw new Error("User is not in the challenge");
-  }
-  return userChallenge;
 }

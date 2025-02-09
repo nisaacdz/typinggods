@@ -1,242 +1,125 @@
-import { eq } from "drizzle-orm";
-import { db } from "../db";
+import { type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { eq, and, not, isNotNull } from "drizzle-orm";
 import {
-  Challenge,
-  ChallengePrivacy,
   ChallengesTable,
+  type TypingSession,
   TypingSessionsTable,
-  UserTypingSessionsTable,
 } from "../db/schema/db.schema";
-import { acceptedInvite, getUserById } from "./user.service";
-import { getChallengeById, getActiveParticipants } from "./challenges.service";
-import { generateTypingText } from "./text.service";
+import { NotFoundError } from "../errors";
 
-export async function getCurrentSession(userId: string) {
-  const [session] = await db
-    .select()
-    .from(UserTypingSessionsTable)
-    .where(eq(UserTypingSessionsTable.userId, userId))
-    .limit(1);
-
-  return session ?? null;
-}
-
-export async function flushSession(userId: string) {
-  await db
-    .delete(UserTypingSessionsTable)
-    .where(eq(UserTypingSessionsTable.userId, userId))
-    .execute();
-}
-
-export async function registerSession(userId: string, challenge: Challenge) {
-  const [userSession] = await db
-    .insert(UserTypingSessionsTable)
-    .values({ userId, challengeId: challenge.challengeId })
-    .returning();
-  return userSession ?? null;
-}
-
-export async function enterTypingZone(userId: string, challengeId: string) {
-  const user = await getUserById(userId);
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  const challenge = await getChallengeById(challengeId);
-  if (!challenge) {
-    throw new Error("Challenge not found");
-  }
-
-  if (challenge.privacy === ChallengePrivacy.Invitational) {
-    const accepted = await acceptedInvite(user, challengeId);
-    if (!accepted) {
-      throw new Error("Challenge is invitational");
-    }
-  }
-
-  const currentSession = await getCurrentSession(userId);
-
-  if (currentSession) {
-    throw new Error("User is already in a typing session");
-  }
-
-  const userSession = await registerSession(userId, challenge);
-
-  return { ...userSession, sessionId: challenge.sessionId };
-}
-
-export async function getTypingSessionById(sessionId: string) {
-  const [session] = await db
-    .select()
-    .from(TypingSessionsTable)
-    .where(eq(TypingSessionsTable.sessionId, sessionId))
-    .limit(1);
-
-  return session ?? null;
-}
-
-export async function getUserTypingSession(userId: string) {
-  const [session] = await db
-    .select()
-    .from(UserTypingSessionsTable)
-    .where(eq(UserTypingSessionsTable.userId, userId))
-    .limit(1);
-
-  return session ?? null;
-}
-
-export async function processUserTyping(
-  challengeId: string,
-  userId: string,
-  letters: string,
-) {
-  // 1. Validate the challenge exists
-  const challenge = await getChallengeById(challengeId);
-  if (!challenge) {
-    throw new Error("Challenge not found");
-  }
-
-  // 2. Get user's active session FOR THIS SPECIFIC CHALLENGE
-  const [userSession] = await db
-    .select()
-    .from(UserTypingSessionsTable)
-    .where(eq(UserTypingSessionsTable.userId, userId))
-    .limit(1);
-
-  let endTime = userSession.endTime;
-
-  // 3. Validate active session exists
-  if (!userSession || endTime) {
-    throw new Error("User is not in a typing session");
-  }
-
-  // 4. Get typing session content
-  const [typingSession] = await db
-    .select()
-    .from(TypingSessionsTable)
-    .where(eq(TypingSessionsTable.sessionId, challenge.sessionId))
-    .limit(1);
-
-  if (!typingSession) {
-    throw new Error("Session not found");
-  }
-
-  if (!typingSession.typingText)
-    return { ...userSession, sessionId: challenge.sessionId };
-
-  const typingText = typingSession.typingText;
-  let currentPos = userSession.currentPos;
-  let correctStrokes = userSession.correctStrokes;
-  let lettersIdx = 0;
-
-  while (currentPos < typingText.length && lettersIdx < letters.length) {
-    const letter = letters[lettersIdx++];
-    if (letter === "\b") {
-      currentPos = Math.max(currentPos - 1, 0);
-    } else {
-      if (letter === typingText[currentPos]) {
-        correctStrokes++;
-      }
-      currentPos++;
-    }
-  }
-
-  if (currentPos >= typingText.length) {
-    endTime = new Date();
-  }
-
-  // 7. Update database with new values
-  await db
-    .update(UserTypingSessionsTable)
-    .set({
-      currentPos: Math.min(currentPos, typingText.length), // Prevent overflow
-      correctStrokes,
-    })
-    .where(eq(UserTypingSessionsTable.userId, userId));
-
-  // 8. Return updated session data
-  return {
-    ...userSession,
-    currentPos: Math.min(currentPos, typingText.length),
-    correctStrokes,
-    endTime,
-    sessionId: challenge.sessionId,
-  };
-}
-
-export async function getTypingZoneData(challengeId: string, userId: string) {
-  const challenge = await getChallengeById(challengeId);
-  if (!challenge) {
-    throw new Error("Challenge not found");
-  }
-
-  const [session, participants] = await Promise.all([
-    getTypingSessionById(challenge.sessionId),
-    getActiveParticipants(challengeId),
-  ]);
-
-  const participantsData = await Promise.all(
-    participants.map(async (participant) => {
-      const [participantSession] = await db
-        .select({ currentPos: UserTypingSessionsTable.currentPos })
-        .from(UserTypingSessionsTable)
-        .where(eq(UserTypingSessionsTable.userId, participant.userId))
-        .limit(1);
-      return participantSession;
-    }),
-  );
-
-  const userSession = await getUserTypingSession(userId);
-
-  return {
-    participants: participantsData,
-    challenge,
-    session,
-    user: userSession,
-  };
-}
-
-export const startSession = async (challengeId: string) => {
-  const [challenge] = await db
-    .select()
-    .from(ChallengesTable)
-    .where(eq(ChallengesTable.challengeId, challengeId))
-    .limit(1);
-
-  if (!challenge) {
-    throw new Error("Challenge not found");
-  }
-
-  const participants = await getActiveParticipants(challengeId);
-
-  if (!participants.length) {
-    throw new Error("Challenge has no participants");
-  }
-
-  const sessionId = challenge.sessionId;
-  const typingText = generateTypingText();
-  // 200ms estimated time the response gets to the clients
-  const startTime = new Date(Date.now() + 100);
-
-  const [startedSession] = await db
-    .update(TypingSessionsTable)
-    .set({ typingText, startTime })
-    .where(eq(TypingSessionsTable.sessionId, sessionId))
-    .returning();
-
-  return startedSession ?? null;
+export type TypingParticipant = {
+  userId: string;
+  currentPosition: number;
+  speed: number | null;
+  accuracy: number | null;
 };
 
-export async function getSessionIdFromChallengeId(challengeId: string) {
-  const [challenge] = await db
-    .select({ sessionId: ChallengesTable.sessionId })
-    .from(ChallengesTable)
-    .where(eq(ChallengesTable.challengeId, challengeId))
-    .limit(1);
+export class TypingService {
+  constructor(private readonly db: NodePgDatabase) {}
 
-  if (!challenge) {
-    throw new Error("Challenge not found");
+  async getOrCreateTypingSession(
+    userId: string,
+    challengeId: string,
+  ): Promise<TypingSession> {
+    const [challenge] = await this.db
+      .select()
+      .from(ChallengesTable)
+      .where(eq(ChallengesTable.challengeId, challengeId))
+      .limit(1);
+
+    if (!challenge) throw new NotFoundError("Challenge not found");
+
+    return this.db.transaction(async (tx) => {
+      // Check for existing active session
+      const [existingSession] = await tx
+        .select()
+        .from(TypingSessionsTable)
+        .where(
+          and(
+            eq(TypingSessionsTable.userId, userId),
+            not(isNotNull(TypingSessionsTable.endTime)),
+          ),
+        )
+        .limit(1);
+
+      if (existingSession) {
+        return existingSession;
+      }
+
+      const [session] = await tx
+        .insert(TypingSessionsTable)
+        .values({
+          userId,
+          challengeId,
+          startTime: challenge.scheduledTime,
+        })
+        .returning();
+
+      return session || null;
+    });
   }
 
-  return challenge.sessionId;
+  async updateSessionProgress(
+    sessionId: string,
+    update: {
+      correctPosition: number;
+      currentPosition: number;
+      wpm: number;
+      accuracy: number;
+      totalKeystrokes: number;
+      endTime: Date | null;
+    },
+  ): Promise<TypingSession> {
+    const [session] = await this.db
+      .update(TypingSessionsTable)
+      .set(update)
+      .where(eq(TypingSessionsTable.sessionId, sessionId))
+      .returning();
+
+    if (!session) throw new NotFoundError("Session not found");
+    return session;
+  }
+
+  async exitSession(sessionId: string, userId: string): Promise<TypingSession> {
+    const [session] = await this.db
+      .delete(TypingSessionsTable)
+      .where(
+        and(
+          eq(TypingSessionsTable.sessionId, sessionId),
+          eq(TypingSessionsTable.userId, userId),
+        ),
+      )
+      .returning();
+
+    return session || null;
+  }
+
+  async getActiveSession(userId: string): Promise<TypingSession | null> {
+    const [session] = await this.db
+      .select()
+      .from(TypingSessionsTable)
+      .where(
+        and(
+          eq(TypingSessionsTable.userId, userId),
+          not(isNotNull(TypingSessionsTable.endTime)),
+        ),
+      )
+      .limit(1);
+
+    return session || null;
+  }
+
+  async getChallengeParticipants(
+    challengeId: string,
+  ): Promise<TypingParticipant[]> {
+    return this.db
+      .select({
+        userId: TypingSessionsTable.userId,
+        currentPosition: TypingSessionsTable.currentPosition,
+        speed: TypingSessionsTable.wpm,
+        accuracy: TypingSessionsTable.accuracy,
+      })
+      .from(TypingSessionsTable)
+      .where(eq(TypingSessionsTable.challengeId, challengeId));
+  }
 }

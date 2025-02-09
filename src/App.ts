@@ -6,6 +6,10 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { getCurrentUser } from "./services/auth.service";
 import initializeSockets from "./sockets";
+import { AppService } from "./services/index.service";
+import { db } from "./db";
+
+const appService = new AppService(db);
 
 const app = express();
 
@@ -35,7 +39,7 @@ io.use((socket, next) => {
   }
 });
 
-initializeSockets(io);
+initializeSockets(io, appService);
 
 app.use((req, _, next) => {
   req.io = io;

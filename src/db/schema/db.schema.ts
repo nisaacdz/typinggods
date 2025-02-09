@@ -9,10 +9,14 @@ import {
   index,
   pgEnum,
   integer,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { da, en } from "@faker-js/faker";
 
+/**
+ * Auth Providers Table
+ * Stores information about the authentication providers
+ */
 export const AuthProvidersTable = pgTable("auth_providers", {
   providerId: uuid("provider_id").defaultRandom().primaryKey(),
   providerName: varchar("provider_name", { length: 50 }).notNull().unique(),
@@ -20,9 +24,12 @@ export const AuthProvidersTable = pgTable("auth_providers", {
   registerUrl: text("register_url").notNull(),
   logoUrl: text("logo_url"),
 });
-
 export type AuthProvider = InferSelectModel<typeof AuthProvidersTable>;
 
+/**
+ * Users Table
+ * Stores user information
+ */
 export const UsersTable = pgTable(
   "users",
   {
@@ -44,60 +51,86 @@ export const UsersTable = pgTable(
       .where(sql`${table.authProvider} IS NOT NULL`),
   }),
 );
-
 export type User = InferSelectModel<typeof UsersTable>;
 export type NewUser = InferInsertModel<typeof UsersTable>;
-export type UpdateUser = Partial<Omit<User, "userId">>;
 
+/**
+ * Challenge Privacy Enum
+ * Enum for challenge privacy
+ * Open - Anyone can join the challenge
+ * Invitational - Only invited users can join the challenge
+ */
 export const ChallengePrivacy = {
   Open: "Open",
   Invitational: "Invitational",
 } as const;
 
-export const ChallengePrivacyEnum = pgEnum(
-  "challenge_privacy",
-  Object.values(ChallengePrivacy) as [string, ...string[]],
-);
-
-export type ChallengePrivacy =
+export type ChallengePrivacyType =
   (typeof ChallengePrivacy)[keyof typeof ChallengePrivacy];
 
+export const ChallengePrivacyEnum = pgEnum(
+  "challenge_privacy",
+  Object.values(ChallengePrivacy) as [
+    ChallengePrivacyType,
+    ...ChallengePrivacyType[],
+  ],
+);
+
+/**
+ * Challenge Table
+ * Stores information about the challenges
+ */
 export const ChallengesTable = pgTable("challenges", {
   challengeId: uuid("challenge_id").defaultRandom().primaryKey(),
-  sessionId: uuid("session_id")
-    .notNull()
-    .references(() => TypingSessionsTable.sessionId),
+  text: text("text").notNull(),
   createdBy: uuid("created_by")
     .notNull()
     .references(() => UsersTable.userId),
-  createdAt: timestamp("created_at")
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
-  startTime: timestamp("start_time").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  scheduledTime: timestamp("scheduled_time").notNull(),
   privacy: ChallengePrivacyEnum("privacy")
     .notNull()
     .default(ChallengePrivacy.Open),
+  duration: integer("duration_seconds").notNull(),
 });
 
 export type Challenge = InferSelectModel<typeof ChallengesTable>;
-export type NewChallenge = Omit<
-  Omit<InferInsertModel<typeof ChallengesTable>, "challengeId">,
-  "sessionId"
->;
+export type ListedChallenge = Omit<Challenge, "text">;
+export type NewChallenge = InferInsertModel<typeof ChallengesTable>;
+
+/**
+ * User Challenge Status Enum
+ * Enum for user challenge status
+ * Accepted - User has accepted the challenge
+ * Rejected - User has rejected the challenge
+ * Pending - User has not yet accepted or rejected the challenge
+ * Completed - User has completed the challenge
+ * Abondoned - User has abondoned the challenge
+ */
 
 export const UserChallengeStatus = {
   Accepted: "Accepted",
   Rejected: "Rejected",
   Pending: "Pending",
+  Completed: "Completed",
+  Abondoned: "Abondoned",
 } as const;
+
+export type UserChallengeStatusType =
+  (typeof UserChallengeStatus)[keyof typeof UserChallengeStatus];
 
 export const UserChallengeStatusEnum = pgEnum(
   "user_challenge_status",
-  Object.values(UserChallengeStatus) as [string, ...[string]],
+  Object.values(UserChallengeStatus) as [
+    UserChallengeStatusType,
+    ...UserChallengeStatusType[],
+  ],
 );
-export type UserChallengeStatus =
-  (typeof UserChallengeStatus)[keyof typeof UserChallengeStatus];
 
+/**
+ * User Challenges Table
+ * Stores the challenges that users have joined
+ */
 export const UserChallengesTable = pgTable(
   "user_challenges",
   {
@@ -110,48 +143,57 @@ export const UserChallengesTable = pgTable(
     status: UserChallengeStatusEnum("status")
       .notNull()
       .default(UserChallengeStatus.Pending),
+    joinedAt: timestamp("joined_at").defaultNow(),
+    completedAt: timestamp("completed_at"),
   },
   (table) => ({
-    pk: uniqueIndex("user_challenges_pk").on(table.userId, table.challengeId),
-    userIdIdx: index("user_id_idx").on(table.userId),
-    challengeIdIndex: index("challenge_id_index").on(table.challengeId),
+    pk: primaryKey({ columns: [table.userId, table.challengeId] }),
+    challengeIdx: index("challenge_idx").on(table.challengeId),
   }),
 );
-
 export type UserChallenge = InferSelectModel<typeof UserChallengesTable>;
-export type NewUserChallenge = InferInsertModel<typeof UserChallengesTable>;
 
-export const TypingSessionsTable = pgTable("typing_sessions_data", {
-  sessionId: uuid("session_id").defaultRandom().primaryKey(),
-  typingText: text("typing_text"),
-  startTime: timestamp("start_time"),
-  endTime: timestamp("end_time"),
-});
-
-export type TypingSessionData = InferSelectModel<typeof TypingSessionsTable>;
-export type NewTypingSessionData = InferInsertModel<typeof TypingSessionsTable>;
-
-export const UserTypingSessionsTable = pgTable(
+/**
+ * Typing Sessions Table
+ * Stores typing sessions of users
+ */
+export const TypingSessionsTable = pgTable(
   "typing_sessions",
   {
-    userSessionId: uuid("session_id").defaultRandom().primaryKey(),
-    challengeId: uuid("challenge_id")
-      .notNull()
-      .references(() => ChallengesTable.challengeId),
+    sessionId: uuid("session_id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
       .references(() => UsersTable.userId),
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => ChallengesTable.challengeId),
+    startTime: timestamp("start_time").defaultNow().notNull(),
     endTime: timestamp("end_time"),
-    currentPos: integer("current_pos").notNull().default(0),
-    correctStrokes: integer("correct_strokes").notNull().default(0),
+    wpm: integer("wpm"),
+    accuracy: integer("accuracy"),
+    totalKeystrokes: integer("total_keystrokes").notNull().default(0),
+    correctPosition: integer("correct_position").notNull().default(0),
+    currentPosition: integer("current_position").notNull().default(0),
   },
-
   (table) => ({
-    // Allows only one session per user at a time
-    userIdIndex: uniqueIndex("userId_unique_idx").on(table.userId),
+    activeSessionIdx: uniqueIndex("active_session_idx")
+      .on(table.userId)
+      .where(sql`${table.endTime} IS NULL`),
   }),
 );
+export type TypingSession = InferSelectModel<typeof TypingSessionsTable>;
 
-export type TypingSession = InferSelectModel<typeof UserTypingSessionsTable>;
-export type NewTypingSession = InferInsertModel<typeof UserTypingSessionsTable>;
-export type UpdateTypingSession = Partial<Omit<TypingSession, "sessionId">>;
+/**
+ * User Stats Table
+ * Stores user stats like total completed challenges, average wpm, average accuracy, total keystrokes
+ */
+export const UserStatsTable = pgTable("user_stats", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => UsersTable.userId),
+  totalCompleted: integer("total_completed").notNull().default(0),
+  averageWpm: integer("average_wpm").notNull().default(0),
+  averageAccuracy: integer("average_accuracy").notNull().default(0),
+  totalKeystrokes: integer("total_keystrokes").notNull().default(0),
+  lastActive: timestamp("last_active"),
+});

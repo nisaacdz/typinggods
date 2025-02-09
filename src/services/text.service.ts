@@ -1,5 +1,9 @@
 import { faker } from "@faker-js/faker";
 
-export const generateTypingText = () => {
-  return faker.lorem.words(24);
-};
+export class TextService {
+  constructor() {}
+
+  generateTypingText() {
+    return faker.lorem.words(24);
+  }
+}

@@ -1,39 +1,266 @@
-import { DefaultEventsMap, Server } from "socket.io";
+import { DefaultEventsMap, Server, Socket } from "socket.io";
+import { AppService } from "../services/index.service";
 import {
-  enterTypingZone,
-  getTypingZoneData,
-  processUserTyping,
-} from "../services/typing.service";
+  Challenge,
+  ChallengePrivacy,
+  TypingSession,
+  UserChallengeStatus,
+} from "../db/schema/db.schema";
+
+const BatchTypingUpdateInterval = 50;
+const BatchChallengeRoomUpdateInterval = 200;
+const BatchTypingTextLength = 5;
+const BatchChallengeRoomTextLength = 20;
+
+const updateUserTypingSession = (
+  typingSession: TypingSession,
+  inputString: string,
+  challengeText: string,
+  appService: AppService,
+  socket: Socket<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
+) => {
+  // allow modifying the typingSession
+  const now = Date.now();
+  const elapsedTime = now - typingSession.startTime.getTime();
+
+  for (
+    let inputIndex = 0;
+    inputIndex < inputString.length &&
+    typingSession.correctPosition < challengeText.length;
+    inputIndex++
+  ) {
+    const currentChar = inputString[inputIndex];
+    if (currentChar === "\b") {
+      if (typingSession.currentPosition > typingSession.correctPosition) {
+        typingSession.currentPosition--;
+      } else if (
+        typingSession.currentPosition === typingSession.correctPosition
+      ) {
+        if (
+          typingSession.currentPosition > 0 &&
+          challengeText[typingSession.currentPosition - 1] !== " "
+        ) {
+          typingSession.currentPosition--;
+          typingSession.correctPosition--;
+        }
+      }
+    } else {
+      typingSession.totalKeystrokes++;
+
+      if (typingSession.currentPosition >= challengeText.length) continue;
+
+      if (
+        typingSession.correctPosition === typingSession.currentPosition &&
+        currentChar === challengeText[typingSession.currentPosition]
+      ) {
+        // Correct character
+        typingSession.correctPosition++;
+        typingSession.currentPosition++;
+      } else {
+        // Incorrect character (track error position)
+        typingSession.currentPosition++;
+      }
+    }
+  }
+
+  if (
+    typingSession.correctPosition >= challengeText.length &&
+    !typingSession.endTime
+  ) {
+    typingSession.endTime = new Date(now);
+  }
+
+  const minutesElapsed = elapsedTime / 60000;
+
+  typingSession.wpm =
+    minutesElapsed > 0
+      ? Math.round(typingSession.correctPosition / 5 / minutesElapsed)
+      : 0;
+  typingSession.accuracy =
+    typingSession.totalKeystrokes === 0
+      ? 100
+      : Math.round(
+          (typingSession.correctPosition / typingSession.totalKeystrokes!) *
+            100,
+        );
+
+  appService.typingService
+    .updateSessionProgress(typingSession.sessionId, {
+      endTime: typingSession.endTime,
+      wpm: typingSession.wpm,
+      accuracy: typingSession.accuracy,
+      totalKeystrokes: typingSession.totalKeystrokes,
+      correctPosition: typingSession.correctPosition,
+      currentPosition: typingSession.currentPosition,
+    })
+    .then((_) => {
+      socket.emit("update", typingSession);
+    })
+    .catch((error) => {
+      socket.emit("error", "Failed to update typing session");
+    });
+};
+
+const updateChallengeRoom = async (
+  challengeId: string,
+  appService: AppService,
+  io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
+) => {
+  const participantUpdates =
+    await appService.challengeService.getChallengeParticipants(challengeId);
+  io.to(challengeId).emit("update", participantUpdates);
+};
 
 export default function initializeSockets(
   io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
+  appService: AppService,
 ) {
   io.on("connection", (socket) => {
-    console.log("Client connected:", socket.id);
+    // some session data needed for the user
     const user = socket.user!;
+    let enteredTypingSession: TypingSession | null = null;
+    let enteredChallenge: Challenge | null = null;
+    let typedText = "";
+    let userUpdateTimeout: NodeJS.Timeout | null = null;
+    let roomUpdateTimeout: NodeJS.Timeout | null = null;
 
-    socket.on("enterTypingZone", async (challengeId) => {
-      let zone = await enterTypingZone(user.userId, challengeId);
-      if (!zone) {
+    socket.on("enter_challenge", async (challengeId) => {
+      let challenge =
+        await appService.challengeService.getChallengeById(challengeId);
+      if (!challenge) {
+        return socket.emit("error", "Challenge not found");
+      }
+      // If challenge has started or entrance window has closed
+      if (
+        challenge.scheduledTime.getTime() -
+          appService.challengeService.challengeClosedWindow <
+        Date.now()
+      ) {
+        return socket.emit(
+          "error",
+          "Challenge is no longer accepting participants",
+        );
+      }
+
+      let userChallenge;
+      if (challenge.privacy === ChallengePrivacy.Open) {
+        userChallenge = await appService.challengeService.enterPublicChallenge(
+          user.userId,
+          challengeId,
+        );
+      } else if (challenge.privacy === ChallengePrivacy.Invitational) {
+        userChallenge = await appService.challengeService.updateChallengeStatus(
+          user.userId,
+          challengeId,
+          UserChallengeStatus.Accepted,
+        );
+      }
+      if (!userChallenge) {
         return socket.emit("error", "Failed to enter typing zone");
       }
-      const zoneData = await getTypingZoneData(challengeId, user.userId);
-      socket.join(zone.sessionId);
-      io.to(zone.sessionId).emit("update", zoneData);
+
+      enteredChallenge = challenge;
+
+      const typingSession =
+        await appService.typingService.getOrCreateTypingSession(
+          user.userId,
+          challengeId,
+        );
+
+      if (!typingSession) {
+        return socket.emit("error", "Failed to enter typing zone");
+      }
+
+      enteredTypingSession = typingSession;
+
+      const participants =
+        await appService.challengeService.getChallengeParticipants(challengeId);
+      socket.join(challenge.challengeId);
+      io.to(challenge.challengeId).emit("entered", participants);
     });
 
-    socket.on("onType", async (data) => {
-      const { challengeId, letters } = data;
-      const userSession = await processUserTyping(
-        challengeId,
+    socket.on("on_type", async (data) => {
+      const { character } = data;
+
+      if (typeof character !== "string" || character.length > 1) {
+        console.warn("Invalid character input:", character);
+        return;
+      }
+
+      if (!enteredTypingSession) {
+        return socket.emit("error", "You are not in a challenge");
+      }
+
+      typedText += character;
+
+      if (!userUpdateTimeout || typedText.length >= BatchTypingTextLength) {
+        const inputString = typedText;
+        typedText = "";
+        userUpdateTimeout = setTimeout(async () => {
+          updateUserTypingSession(
+            enteredTypingSession!,
+            inputString,
+            enteredChallenge!.text,
+            appService,
+            socket,
+          );
+          if (
+            enteredTypingSession!.correctPosition >=
+            enteredChallenge!.text.length
+          ) {
+            appService.challengeService.updateChallengeStatus(
+              user.userId,
+              enteredChallenge!.challengeId,
+              UserChallengeStatus.Completed,
+            );
+          }
+          userUpdateTimeout = null;
+        }, BatchTypingUpdateInterval);
+      }
+
+      if (
+        !roomUpdateTimeout ||
+        typedText.length >= BatchChallengeRoomTextLength
+      ) {
+        roomUpdateTimeout = setTimeout(async () => {
+          updateChallengeRoom(enteredChallenge!.challengeId, appService, io);
+          roomUpdateTimeout = null;
+        }, BatchChallengeRoomUpdateInterval);
+      }
+    });
+
+    socket.on("leave_challenge", async () => {
+      if (!enteredChallenge) {
+        return socket.emit("error", "You are not in a challenge");
+      }
+
+      if (enteredTypingSession) {
+        socket.leave(enteredChallenge.challengeId);
+        await appService.typingService.exitSession(
+          enteredTypingSession.sessionId,
+          user.userId,
+        );
+      }
+
+      // await appService.challengeService.leaveChallenge(user.userId, enteredChallenge.challengeId);
+      await appService.challengeService.updateChallengeStatus(
         user.userId,
-        letters,
+        enteredChallenge.challengeId,
+        UserChallengeStatus.Abondoned,
       );
-      const zoneData = await getTypingZoneData(challengeId, user.userId);
-      io.to(userSession.sessionId).emit("update", zoneData);
+      const participants =
+        await appService.challengeService.getChallengeParticipants(
+          enteredChallenge.challengeId,
+        );
+      io.to(enteredChallenge.challengeId).emit("update", participants);
+      enteredChallenge = null;
+      enteredTypingSession = null;
     });
 
     socket.on("disconnect", () => {
+      if (enteredTypingSession) {
+        socket.leave(enteredTypingSession.challengeId);
+      }
       console.log("Client disconnected:", socket.id);
     });
   });

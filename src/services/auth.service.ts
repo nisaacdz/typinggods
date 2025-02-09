@@ -143,18 +143,23 @@ export function verifyToken(token: string) {
   }
 }
 
-export function getCurrentUser(req: Request | string) {
-  try {
-    let token;
-    if (typeof req === "string") {
-      token = req;
-    } else {
-      token = req.headers.authorization?.split(" ")[1];
-    }
-    if (!token) return null;
-    const payload = verifyToken(token) as User;
-    return payload;
-  } catch (error) {
+export function getCurrentUser(token: string): User | null {
+  const payload = verifyToken(token) as User;
+  return payload;
+}
+
+export function getCurrentUserFromRequest(req: Request): User | null {
+  const token = getToken(req);
+  if (!token) {
     return null;
   }
+  return getCurrentUser(token);
+}
+
+export function getToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return null;
+  }
+  return authHeader.split(" ")[1];
 }

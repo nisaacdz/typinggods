@@ -1,6 +1,12 @@
+import { faker } from "@faker-js/faker";
 import { db } from "./index"; // Drizzle instance
-import { AuthProvidersTable } from "./schema/db.schema"; // Table schema for auth providers
-import { eq } from "drizzle-orm";
+import {
+  AuthProvidersTable,
+  ChallengePrivacy,
+  ChallengesTable,
+  UsersTable,
+} from "./schema/db.schema"; // Table schema for auth providers
+import { count, eq, or, lt } from "drizzle-orm";
 
 const authProviders = [
   {
@@ -14,6 +20,24 @@ const authProviders = [
     loginUrl: "https://github.com/login",
     registerUrl: "https://github.com/signup",
     logoUrl: "https://example.com/github-logo.png",
+  },
+];
+
+const users = [
+  {
+    email: "noone@domain.com",
+    password: "password",
+    username: "noone",
+  },
+  {
+    email: "johndoe@domain.com",
+    password: "password",
+    username: "johndoe",
+  },
+  {
+    email: "newt@domain.com",
+    password: "123456789",
+    username: "newt",
   },
 ];
 
@@ -33,8 +57,73 @@ const seedAuthProviders = async () => {
   }
 };
 
+const seedUsers = async () => {
+  for (const user of users) {
+    const existingUser = await db
+      .select()
+      .from(UsersTable)
+      .where(or(eq(UsersTable.email, user.email), eq(UsersTable.username, user.username)));
+
+    if (existingUser.length === 0) {
+      await db.insert(UsersTable).values(user);
+      console.log(`✅ Inserted: ${user.email}`);
+    } else {
+      console.log(`⚠️ Already exists: ${user.email}`);
+    }
+  }
+};
+
+const seedChallenges = async () => {
+  // Remove all outdated challenges
+  // Count remaining challenges
+  // Insert new challenges to reach 50
+  // Challenges should have scchedule time randomly picked from the next 7 days
+  // duration should also be random between 15 seconds and 10 minutes
+  // Assign all users listed in the users array to the challenges
+  // Assign all users to the first 10 challenges
+  // Assign to only invitational challenges
+  // Create aproximately half Public and half Invitational challenge
+
+  await db
+    .delete(ChallengesTable)
+    .where(lt(ChallengesTable.scheduledTime, new Date()));
+  const [remainingChallenges] = await db
+    .select({ count: count() })
+    .from(ChallengesTable)
+    .execute();
+
+  if (remainingChallenges.count >= 50) {
+    console.log("✅ No need to seed challenges");
+    return;
+  }
+
+  const users = await db.select().from(UsersTable).execute();
+
+  const newChallenges = Array.from(
+    { length: 50 - remainingChallenges.count },
+    (_, i) => {
+      const isPublic = i % 2 === 0;
+      const scheduledTime = new Date(
+        Date.now() + 1000 * 60 * 60 * 24 * (i % 7),
+      );
+      const duration = Math.floor(Math.random() * (10 * 60 - 15) + 15);
+      return {
+        privacy: isPublic
+          ? ChallengePrivacy.Open
+          : ChallengePrivacy.Invitational,
+        createdBy: users[i % users.length].userId,
+        text: faker.lorem.words(24),
+        scheduledTime,
+        duration,
+      };
+    },
+  );
+
+  await db.insert(ChallengesTable).values(newChallenges);
+};
+
 const seed = async () => {
-  await Promise.all([seedAuthProviders()]);
+  await Promise.all([seedAuthProviders(), seedUsers(), seedChallenges()]);
 };
 
 seed()
