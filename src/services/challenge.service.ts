@@ -1,9 +1,10 @@
 import { type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, count, gt } from "drizzle-orm";
 import {
   type Challenge,
   type NewChallenge,
   type UserChallenge,
+  ChallengePrivacy,
   ChallengesTable,
   ListedChallenge,
   UserChallengesTable,
@@ -11,6 +12,7 @@ import {
   UserChallengeStatusType,
 } from "../db/schema/db.schema";
 import { DatabaseError, NotFoundError } from "../errors";
+import e from "express";
 
 const ListedChallengeSelection = {
   challengeId: ChallengesTable.challengeId,
@@ -30,7 +32,7 @@ export class ChallengeService {
       .insert(ChallengesTable)
       .values(challengeData)
       .returning(ListedChallengeSelection);
-    return challenge;
+    return {...challenge, participants: 0};
   }
 
   async getChallengeById(challengeId: string): Promise<Challenge> {
@@ -50,7 +52,10 @@ export class ChallengeService {
     pageSize: number,
   ): Promise<ListedChallenge[]> {
     return this.db
-      .select(ListedChallengeSelection)
+      .select({
+        ...ListedChallengeSelection,
+        participants: count(UserChallengesTable.userId).as("participants"),
+      })
       .from(ChallengesTable)
       .innerJoin(
         UserChallengesTable,
@@ -58,26 +63,47 @@ export class ChallengeService {
       )
       .where(
         and(
-          eq(ChallengesTable.privacy, "Invitational"),
+          eq(ChallengesTable.privacy, ChallengePrivacy.Invitational),
           eq(UserChallengesTable.userId, userId),
           eq(UserChallengesTable.status, UserChallengeStatus.Pending),
         ),
       )
+      .groupBy(ChallengesTable.challengeId)
       .limit(pageSize)
       .offset(page * pageSize);
   }
-
-  async getPublicChallenges(limit: number): Promise<ListedChallenge[]> {
+  
+  async getPublicChallenges(offset: number, limit: number): Promise<ListedChallenge[]> {
     return this.db
-      .select(ListedChallengeSelection)
+      .select({
+        ...ListedChallengeSelection,
+        participants: count(UserChallengesTable.userId).as("participants"),
+      })
       .from(ChallengesTable)
-      .where(
+      .leftJoin(
+        UserChallengesTable,
         and(
-          eq(ChallengesTable.privacy, "Open"),
-          sql`${ChallengesTable.scheduledTime} > NOW()`,
+          eq(ChallengesTable.challengeId, UserChallengesTable.challengeId),
+          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
         ),
       )
+      .where(
+        and(
+          eq(ChallengesTable.privacy, ChallengePrivacy.Open),
+          gt(ChallengesTable.scheduledTime, sql`NOW()`),
+        ),
+      )
+      .groupBy(ChallengesTable.challengeId)
+      .offset(offset)
       .limit(limit);
+  }
+  
+  async getTotalChallenges(): Promise<number> {
+    const [result] = await this.db
+      .select({ count: count() })
+      .from(ChallengesTable);
+
+    return result?.count || 0;
   }
 
   async getUserChallenge(
@@ -208,12 +234,15 @@ export class ChallengeService {
         and(
           eq(UserChallengesTable.userId, userId),
           eq(UserChallengesTable.challengeId, challengeId),
+          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
         ),
       )
       .limit(1);
 
     if (existingUserChallenge) {
-      throw new DatabaseError("User already in challenge");
+      // throw new DatabaseError("User already in challenge");
+      console.log("User already in challenge", existingUserChallenge);
+      return existingUserChallenge;
     }
 
     const [userChallenge] = await this.db
@@ -221,7 +250,7 @@ export class ChallengeService {
       .values({
         userId,
         challengeId,
-        status: UserChallengeStatus.Pending,
+        status: UserChallengeStatus.Accepted,
       })
       .returning();
 

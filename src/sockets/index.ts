@@ -94,7 +94,7 @@ const updateUserTypingSession = (
       currentPosition: typingSession.currentPosition,
     })
     .then((_) => {
-      socket.emit("update", typingSession);
+      socket.emit("participant-update", typingSession);
     })
     .catch((error) => {
       socket.emit("error", "Failed to update typing session");
@@ -108,7 +108,7 @@ const updateChallengeRoom = async (
 ) => {
   const participantUpdates =
     await appService.challengeService.getChallengeParticipants(challengeId);
-  io.to(challengeId).emit("update", participantUpdates);
+  io.to(challengeId).emit("zone-update", participantUpdates);
 };
 
 export default function initializeSockets(
@@ -117,7 +117,7 @@ export default function initializeSockets(
 ) {
   io.on("connection", (socket) => {
     // some session data needed for the user
-    const user = socket.user!;
+    const user = socket.request.session?.user!;
     let enteredTypingSession: TypingSession | null = null;
     let enteredChallenge: Challenge | null = null;
     let typedText = "";
@@ -252,7 +252,7 @@ export default function initializeSockets(
         await appService.challengeService.getChallengeParticipants(
           enteredChallenge.challengeId,
         );
-      io.to(enteredChallenge.challengeId).emit("update", participants);
+      io.to(enteredChallenge.challengeId).emit("zone-update", participants);
       enteredChallenge = null;
       enteredTypingSession = null;
     });

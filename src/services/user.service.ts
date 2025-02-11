@@ -82,50 +82,7 @@ export class UserStatsService {
   }
 
   async updateStats(session: TypingSession) {
-    if (!session.endTime || session.endTime > new Date()) return;
-
-    await this.db.transaction(async (tx) => {
-      const stats = await tx
-        .select()
-        .from(UserStatsTable)
-        .where(eq(UserStatsTable.userId, session.userId))
-        .limit(1);
-
-      const newTotal = stats[0]?.totalCompleted || 0 + 1;
-      const newAverageWpm = Math.round(
-        ((stats[0]?.averageWpm || 0) * (newTotal - 1) + session.wpm!) /
-          newTotal,
-      );
-      const newAverageAccuracy = Math.round(
-        ((stats[0]?.averageAccuracy || 0) * (newTotal - 1) +
-          session.accuracy!) /
-          newTotal,
-      );
-
-      await tx
-        .insert(UserStatsTable)
-        .values({
-          userId: session.userId,
-          totalCompleted: newTotal,
-          averageWpm: newAverageWpm,
-          averageAccuracy: newAverageAccuracy,
-          totalKeystrokes: sql`${UserStatsTable.totalKeystrokes} + ${
-            session.correctKeystrokes + session.incorrectKeystrokes
-          }`,
-          lastActive: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: UserStatsTable.userId,
-          set: {
-            totalCompleted: newTotal,
-            averageWpm: newAverageWpm,
-            averageAccuracy: newAverageAccuracy,
-            totalKeystrokes: sql`${UserStatsTable.totalKeystrokes} + ${
-              session.correctKeystrokes + session.incorrectKeystrokes
-            }`,
-            lastActive: new Date(),
-          },
-        });
-    });
+    // Update stats only if the session has ended 
+    // todo: will need to study the logic here
   }
 }

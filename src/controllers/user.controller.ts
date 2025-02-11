@@ -1,18 +1,28 @@
 import { Request, Response } from "express";
-import { getUserById, searchUsers } from "../services/user.service";
+import { NewUser } from "../db/schema/db.schema";
+import { UserService } from "../services/user.service";
 
-export const getUsers = (req: Request, res: Response) => {
-  const users = searchUsers(req);
-  return res.json(users);
-};
-
-export const getUser = (req: Request, res: Response) => {
-  const userId = req.params.id;
-  const user = getUserById(userId);
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+export default class UserController {
+  constructor(private readonly userService: UserService) {
+    this.userService = userService;
   }
 
-  return res.json(user);
-};
+  async getUser(req: Request, res: Response) {
+    const userId = req.params.id;
+    const user = this.userService.getUserById(userId);
+    return res.json(user);
+  }
+
+  async createUser(req: Request, res: Response) {
+    const userData = req.body as NewUser;
+    const user = this.userService.createUser(userData);
+    return res.json(user);
+  }
+
+  async updateUser(req: Request, res: Response) {
+    const userId = req.params.id;
+    const updateData = req.body;
+    const user = this.userService.updateUser(userId, updateData);
+    return res.json(user);
+  }
+}

@@ -1,53 +1,43 @@
 import express from "express";
+import session from "express-session";
 import Env from "./config/app.keys";
 import { initializeRoutes } from "./routes/app.routes";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { getCurrentUser } from "./services/auth.service";
 import initializeSockets from "./sockets";
 import { AppService } from "./services/index.service";
 import { db } from "./db";
+import { getCurrentUser, login } from "./services/auth";
 
 const appService = new AppService(db);
-
 const app = express();
 
+// Basic middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors({ origin: "*" }));
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true
+}));
 
-const httpServer = createServer(app);
-
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-  },
-});
-
-io.use((socket, next) => {
-  try {
-    const token = socket.handshake.auth.token;
-    const user = getCurrentUser(token);
-    if (!user) {
-      throw new Error("Authentication failed");
-    }
-    socket.user = user;
-    next();
-  } catch (error: any) {
-    next(error instanceof Error ? error : new Error("Authentication failed"));
+const sessionMiddleware = session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 });
 
-initializeSockets(io, appService);
+// Session configuration
+app.use(sessionMiddleware);
 
-app.use((req, _, next) => {
-  req.io = io;
-  next();
-});
-
+// Public routes
 app.get("/", (_req, res) => {
-  res.status(200).send("<h1>Successful</h1>");
+  res.status(200).send("<h1>Welcome</h1>");
 });
 
 app.get(Env.API_PATH + "/health", (_req, res) => {
@@ -55,14 +45,90 @@ app.get(Env.API_PATH + "/health", (_req, res) => {
   res.status(200).send(response);
 });
 
-initializeRoutes(app);
+// Example login route
+app.post('/login', async (req, res) => {
+  try {
+    const {password, username } = req.body;
+    const user = await login(password, username);
+    if (!user || !req.session) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    req.session.user = user;
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
 
+// Apply authentication to protected routes
+app.use('/api', async (req, res, next) => {
+  if (!req.session?.user) {
+    if (req.xhr || req.headers.accept?.includes('application/json')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    } else if (req.session) {
+      req.session.user = await login('password', 'username');
+    } else {
+      return res.redirect('/login');
+    }
+  }
+  next();
+});
+
+// Initialize your routes
+initializeRoutes(app, appService);
+
+const httpServer = createServer(app);
+
+// Socket.io setup with session support
+const io = new Server(httpServer, {
+  cors: {
+    origin: 'http://localhost:3000',
+    credentials: true
+  }
+});
+
+
+// Share session middleware with Socket.IO
+io.engine.use(sessionMiddleware);
+
+// Authentication middleware
+io.use(async (socket, next) => {
+  const user = getCurrentUser(socket.request.session)
+  if (user) {
+    return next();
+  } else if (socket.request.session) {
+    socket.request.session.user = await login('password', 'username');
+    return next();
+  } else {
+    return next(new Error('Authentication error'));
+  }
+});
+
+initializeSockets(io, appService);
+
+if (process.env.NODE_ENV !== 'production') {
+  const router = app._router as express.Router;
+  router.stack.forEach((layer: any) => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods);
+      if (methods.length > 0) {
+        const method = methods[0].toUpperCase();
+        const path = layer.route.path;
+        console.log(`  ${method} ${path}`);
+      }
+    }
+  });
+}
+
+// 404 handler
 app.all("*", (_req, res) => {
   res.status(404).send("RESOURCE NOT FOUND");
 });
 
-httpServer.listen(3000, () => {
-  console.log("Server running on port 3000");
+// Error handler
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something broke!' });
 });
 
-export default app;
+export default httpServer;
