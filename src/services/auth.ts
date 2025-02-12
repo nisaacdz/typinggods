@@ -2,7 +2,12 @@ import { Request } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { eq, or } from "drizzle-orm";
-import { AuthProvidersTable, LocalUser, User, UsersTable } from "../db/schema/db.schema";
+import {
+  AuthProvidersTable,
+  LocalUser,
+  User,
+  UsersTable,
+} from "../db/schema/db.schema";
 import { db } from "../db";
 import {
   uniqueNamesGenerator,
@@ -43,11 +48,8 @@ export async function register(email: string, password: string) {
 export async function login(_username: string, _password: string) {
   // const { _email, _password } = req.body;
   // Temp login of default user for demo purposes
-  const [user] = await db
-    .select()
-    .from(UsersTable)
-    .limit(1);
-  
+  const [user] = await db.select().from(UsersTable).limit(1);
+
   return user || null;
 }
 
@@ -137,7 +139,9 @@ export async function login(_username: string, _password: string) {
 //   }
 // }
 
-export function getCurrentUser(session: Session & Partial<SessionData> | undefined): LocalUser | null {
+export function getCurrentUser(
+  session: (Session & Partial<SessionData>) | undefined,
+): LocalUser | null {
   return session?.user || null;
 }
 

@@ -53,7 +53,10 @@ export const UsersTable = pgTable(
 );
 export type User = InferSelectModel<typeof UsersTable>;
 export type NewUser = InferInsertModel<typeof UsersTable>;
-export type LocalUser = Omit<Omit<Omit<User, "password">, "authProvider">, "externalId">;
+export type LocalUser = Omit<
+  Omit<Omit<User, "password">, "authProvider">,
+  "externalId"
+>;
 
 /**
  * Challenge Privacy Enum
@@ -97,9 +100,11 @@ export const ChallengesTable = pgTable("challenges", {
 
 export type Challenge = InferSelectModel<typeof ChallengesTable>;
 export type NewChallenge = InferInsertModel<typeof ChallengesTable>;
-export interface ListedChallenge extends Omit<Challenge, "text"> {
+export type ListedChallenge = Omit<Challenge, "text" | "createdBy"> & {
+  createdBy: Pick<User, "userId" | "username" | "email">;
   participants: number;
-}
+};
+export type CreatedChallenge = Omit<Challenge, "text">;
 
 /**
  * User Challenge Status Enum

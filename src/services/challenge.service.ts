@@ -1,20 +1,31 @@
 import { type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { eq, and, sql, inArray, count, gt } from "drizzle-orm";
+import {
+  eq,
+  and,
+  sql,
+  inArray,
+  count,
+  gt,
+  getTableColumns,
+  asc,
+} from "drizzle-orm";
 import {
   type Challenge,
   type NewChallenge,
   type UserChallenge,
   ChallengePrivacy,
   ChallengesTable,
+  CreatedChallenge,
   ListedChallenge,
   UserChallengesTable,
   UserChallengeStatus,
   UserChallengeStatusType,
+  UsersTable,
 } from "../db/schema/db.schema";
-import { DatabaseError, NotFoundError } from "../errors";
-import e from "express";
 
-const ListedChallengeSelection = {
+import { DatabaseError, NotFoundError } from "../errors";
+
+const CreatedChallengeSelection = {
   challengeId: ChallengesTable.challengeId,
   createdBy: ChallengesTable.createdBy,
   createdAt: ChallengesTable.createdAt,
@@ -23,16 +34,29 @@ const ListedChallengeSelection = {
   duration: ChallengesTable.duration,
 };
 
+const ListedChallengeSelection = {
+  challengeId: ChallengesTable.challengeId,
+  createdBy: {
+    userId: UsersTable.userId,
+    username: UsersTable.username,
+    email: UsersTable.email,
+  },
+  createdAt: ChallengesTable.createdAt,
+  scheduledTime: ChallengesTable.scheduledTime,
+  privacy: ChallengesTable.privacy,
+  duration: ChallengesTable.duration,
+};
+
 export class ChallengeService {
-  challengeClosedWindow = 10 * 1000; // 10 seconds
+  challengeClosedWindow = 10 * 1000;
   constructor(private readonly db: NodePgDatabase) {}
 
-  async createChallenge(challengeData: NewChallenge): Promise<ListedChallenge> {
+  async createChallenge(challengeData: NewChallenge) {
     const [challenge] = await this.db
       .insert(ChallengesTable)
       .values(challengeData)
-      .returning(ListedChallengeSelection);
-    return {...challenge, participants: 0};
+      .returning(CreatedChallengeSelection);
+    return { ...challenge, participants: 0 };
   }
 
   async getChallengeById(challengeId: string): Promise<Challenge> {
@@ -46,64 +70,40 @@ export class ChallengeService {
     return challenge;
   }
 
-  async getInvitedChallenges(
-    userId: string,
+  async getChallenges(
     page: number,
     pageSize: number,
+    sortBy?: string,
+    filter?: string,
   ): Promise<ListedChallenge[]> {
-    return this.db
+    const result = await this.db
       .select({
-        ...ListedChallengeSelection,
-        participants: count(UserChallengesTable.userId).as("participants"),
+        ...getTableColumns(ChallengesTable),
+        createdBy: {
+          userId: UsersTable.userId,
+          username: UsersTable.username,
+          email: UsersTable.email,
+        },
+        participants: this.db
+          .select({
+            count: count().as("count"),
+          })
+          .from(UserChallengesTable)
+          .where(
+            and(
+              eq(UserChallengesTable.challengeId, ChallengesTable.challengeId),
+              eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+            ),
+          )
+          .as("participants").count,
       })
       .from(ChallengesTable)
-      .innerJoin(
-        UserChallengesTable,
-        eq(ChallengesTable.challengeId, UserChallengesTable.challengeId),
-      )
-      .where(
-        and(
-          eq(ChallengesTable.privacy, ChallengePrivacy.Invitational),
-          eq(UserChallengesTable.userId, userId),
-          eq(UserChallengesTable.status, UserChallengeStatus.Pending),
-        ),
-      )
-      .groupBy(ChallengesTable.challengeId)
+      .innerJoin(UsersTable, eq(ChallengesTable.createdBy, UsersTable.userId))
+      .orderBy(asc(ChallengesTable.scheduledTime))
       .limit(pageSize)
       .offset(page * pageSize);
-  }
-  
-  async getPublicChallenges(offset: number, limit: number): Promise<ListedChallenge[]> {
-    return this.db
-      .select({
-        ...ListedChallengeSelection,
-        participants: count(UserChallengesTable.userId).as("participants"),
-      })
-      .from(ChallengesTable)
-      .leftJoin(
-        UserChallengesTable,
-        and(
-          eq(ChallengesTable.challengeId, UserChallengesTable.challengeId),
-          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
-        ),
-      )
-      .where(
-        and(
-          eq(ChallengesTable.privacy, ChallengePrivacy.Open),
-          gt(ChallengesTable.scheduledTime, sql`NOW()`),
-        ),
-      )
-      .groupBy(ChallengesTable.challengeId)
-      .offset(offset)
-      .limit(limit);
-  }
-  
-  async getTotalChallenges(): Promise<number> {
-    const [result] = await this.db
-      .select({ count: count() })
-      .from(ChallengesTable);
 
-    return result?.count || 0;
+    return result;
   }
 
   async getUserChallenge(

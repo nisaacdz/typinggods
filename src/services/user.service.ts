@@ -82,7 +82,7 @@ export class UserStatsService {
   }
 
   async updateStats(session: TypingSession) {
-    // Update stats only if the session has ended 
+    // Update stats only if the session has ended
     // todo: will need to study the logic here
   }
 }

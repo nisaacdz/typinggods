@@ -16,20 +16,22 @@ const app = express();
 // Basic middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors({
-  origin: 'http://localhost:3000',
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  }),
+);
 
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  secret: process.env.SESSION_SECRET || "your-secret-key",
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    secure: process.env.NODE_ENV === "production", // Use secure cookies in production
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+  },
 });
 
 // Session configuration
@@ -46,29 +48,29 @@ app.get(Env.API_PATH + "/health", (_req, res) => {
 });
 
 // Example login route
-app.post('/login', async (req, res) => {
+app.post("/login", async (req, res) => {
   try {
-    const {password, username } = req.body;
+    const { password, username } = req.body;
     const user = await login(password, username);
     if (!user || !req.session) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: "Invalid credentials" });
     }
     req.session.user = user;
     res.status(200).json(user);
   } catch (error) {
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: "Login failed" });
   }
 });
 
 // Apply authentication to protected routes
-app.use('/api', async (req, res, next) => {
+app.use("/api", async (req, res, next) => {
   if (!req.session?.user) {
-    if (req.xhr || req.headers.accept?.includes('application/json')) {
-      return res.status(401).json({ error: 'Authentication required' });
+    if (req.xhr || req.headers.accept?.includes("application/json")) {
+      return res.status(401).json({ error: "Authentication required" });
     } else if (req.session) {
-      req.session.user = await login('password', 'username');
+      req.session.user = await login("password", "username");
     } else {
-      return res.redirect('/login');
+      return res.redirect("/login");
     }
   }
   next();
@@ -82,31 +84,30 @@ const httpServer = createServer(app);
 // Socket.io setup with session support
 const io = new Server(httpServer, {
   cors: {
-    origin: 'http://localhost:3000',
-    credentials: true
-  }
+    origin: "http://localhost:3000",
+    credentials: true,
+  },
 });
-
 
 // Share session middleware with Socket.IO
 io.engine.use(sessionMiddleware);
 
 // Authentication middleware
 io.use(async (socket, next) => {
-  const user = getCurrentUser(socket.request.session)
+  const user = getCurrentUser(socket.request.session);
   if (user) {
     return next();
   } else if (socket.request.session) {
-    socket.request.session.user = await login('password', 'username');
+    socket.request.session.user = await login("password", "username");
     return next();
   } else {
-    return next(new Error('Authentication error'));
+    return next(new Error("Authentication error"));
   }
 });
 
 initializeSockets(io, appService);
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== "production") {
   const router = app._router as express.Router;
   router.stack.forEach((layer: any) => {
     if (layer.route) {
@@ -126,9 +127,16 @@ app.all("*", (_req, res) => {
 });
 
 // Error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something broke!' });
-});
+app.use(
+  (
+    err: Error,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    console.error(err.stack);
+    res.status(500).json({ error: "Something broke!" });
+  },
+);
 
 export default httpServer;

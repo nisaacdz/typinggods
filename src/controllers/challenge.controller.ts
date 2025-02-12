@@ -49,19 +49,17 @@ export default class ChallengeController {
     }
 
     const challengeId = req.params.id;
-    const challenge =
-      await this.challengeService.getChallengeById(challengeId);
+    const challenge = await this.challengeService.getChallengeById(challengeId);
 
     if (!challenge) {
       return res.status(404).send("Challenge not found");
     }
 
     if (challenge.privacy === ChallengePrivacy.Invitational) {
-      const userChallenge =
-        await this.challengeService.getUserChallenge(
-          user.userId,
-          challengeId,
-        );
+      const userChallenge = await this.challengeService.getUserChallenge(
+        user.userId,
+        challengeId,
+      );
       if (!userChallenge) {
         return res.status(403).send("Unauthorized");
       }
@@ -88,32 +86,10 @@ export default class ChallengeController {
       ? parseInt(req.query.pageSize as string)
       : DefaultPageSize;
 
-    const totalChallenges = await this.challengeService.getTotalChallenges();
-
-    // First look for all Invitational challenges that the user is a part of (Paginate)
-    const invitationalChallenges =
-      await this.challengeService.getInvitedChallenges(
-        user.userId,
-        page,
-        pageSize,
-      );
-
-    let remainingLimit = pageSize - invitationalChallenges.length;
-    let publicChallenges: ListedChallenge[] = [];
-
-    // Then look for all Open challenges (if pagination is not complete)
-    if (remainingLimit > 0) {
-      publicChallenges =
-        await this.challengeService.getPublicChallenges(
-          0, // Corrected: Offset should be 0 for public challenges in this scenario
-          remainingLimit,
-        );
-    }
-
-    const challenges = invitationalChallenges.concat(publicChallenges);
-    const totalPages = Math.ceil(totalChallenges / pageSize);
-
-    return res.status(200).send({ challenges, totalPages });
+    const challenges = await this.challengeService.getChallenges(
+      page,
+      pageSize,
+    );
   }
 
   async getChallengeText(req: Request, res: Response) {
@@ -123,19 +99,17 @@ export default class ChallengeController {
     }
 
     const challengeId = req.params.id;
-    const challenge =
-      await this.challengeService.getChallengeById(challengeId);
+    const challenge = await this.challengeService.getChallengeById(challengeId);
 
     if (!challenge) {
       return res.status(404).send("Challenge not found");
     }
 
     if (challenge.privacy === ChallengePrivacy.Invitational) {
-      const userChallenge =
-        await this.challengeService.getUserChallenge(
-          user.userId,
-          challengeId,
-        );
+      const userChallenge = await this.challengeService.getUserChallenge(
+        user.userId,
+        challengeId,
+      );
       if (!userChallenge) {
         return res.status(403).send("Unauthorized");
       }

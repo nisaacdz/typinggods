@@ -62,7 +62,12 @@ const seedUsers = async () => {
     const existingUser = await db
       .select()
       .from(UsersTable)
-      .where(or(eq(UsersTable.email, user.email), eq(UsersTable.username, user.username)));
+      .where(
+        or(
+          eq(UsersTable.email, user.email),
+          eq(UsersTable.username, user.username),
+        ),
+      );
 
     if (existingUser.length === 0) {
       await db.insert(UsersTable).values(user);
@@ -102,9 +107,9 @@ const seedChallenges = async () => {
   const newChallenges = Array.from(
     { length: 50 - remainingChallenges.count },
     (_, i) => {
-      const isPublic = i % 2 === 0;
+      const isPublic = Math.random() < 0.5;
       const scheduledTime = new Date(
-        Date.now() + 1000 * 60 * 60 * 24 * (i % 7),
+        Date.now() + 120000 + 1000 * 60 * Math.floor(Math.random() * 10),
       );
       const duration = Math.floor(Math.random() * (10 * 60 - 15) + 15);
       return {
