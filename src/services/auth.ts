@@ -48,7 +48,11 @@ export async function register(email: string, password: string) {
 export async function login(_username: string, _password: string) {
   // const { _email, _password } = req.body;
   // Temp login of default user for demo purposes
-  const [user] = await db.select().from(UsersTable).limit(1);
+  const [user] = await db
+    .select()
+    .from(UsersTable)
+    .where(eq(UsersTable.username, "newt"))
+    .limit(1);
 
   return user || null;
 }

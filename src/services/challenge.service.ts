@@ -24,12 +24,14 @@ import {
 } from "../db/schema/db.schema";
 
 import { DatabaseError, NotFoundError } from "../errors";
+import { start } from "repl";
 
 const CreatedChallengeSelection = {
   challengeId: ChallengesTable.challengeId,
   createdBy: ChallengesTable.createdBy,
   createdAt: ChallengesTable.createdAt,
-  scheduledTime: ChallengesTable.scheduledTime,
+  scheduledAt: ChallengesTable.scheduledAt,
+  startedAt: ChallengesTable.startedAt,
   privacy: ChallengesTable.privacy,
   duration: ChallengesTable.duration,
 };
@@ -42,7 +44,8 @@ const ListedChallengeSelection = {
     email: UsersTable.email,
   },
   createdAt: ChallengesTable.createdAt,
-  scheduledTime: ChallengesTable.scheduledTime,
+  scheduledAt: ChallengesTable.scheduledAt,
+  startedAt: ChallengesTable.startedAt,
   privacy: ChallengesTable.privacy,
   duration: ChallengesTable.duration,
 };
@@ -51,12 +54,14 @@ export class ChallengeService {
   challengeClosedWindow = 10 * 1000;
   constructor(private readonly db: NodePgDatabase) {}
 
-  async createChallenge(challengeData: NewChallenge) {
+  async createChallenge(
+    challengeData: NewChallenge,
+  ): Promise<CreatedChallenge> {
     const [challenge] = await this.db
       .insert(ChallengesTable)
       .values(challengeData)
       .returning(CreatedChallengeSelection);
-    return { ...challenge, participants: 0 };
+    return challenge;
   }
 
   async getChallengeById(challengeId: string): Promise<Challenge> {
@@ -78,38 +83,45 @@ export class ChallengeService {
   ): Promise<ListedChallenge[]> {
     const result = await this.db
       .select({
-        ...getTableColumns(ChallengesTable),
+        ...ListedChallengeSelection,
         createdBy: {
           userId: UsersTable.userId,
           username: UsersTable.username,
           email: UsersTable.email,
         },
-        participants: this.db
-          .select({
-            count: count().as("count"),
-          })
-          .from(UserChallengesTable)
-          .where(
-            and(
-              eq(UserChallengesTable.challengeId, ChallengesTable.challengeId),
-              eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
-            ),
-          )
-          .as("participants").count,
+        participants: count(
+          and(
+            eq(UserChallengesTable.challengeId, ChallengesTable.challengeId),
+            eq(UserChallengesTable.challengeId, ChallengesTable.challengeId),
+          ),
+        ).as("participants"),
       })
       .from(ChallengesTable)
       .innerJoin(UsersTable, eq(ChallengesTable.createdBy, UsersTable.userId))
-      .orderBy(asc(ChallengesTable.scheduledTime))
+      .leftJoin(
+        UserChallengesTable,
+        eq(ChallengesTable.challengeId, UserChallengesTable.challengeId),
+      )
+      .groupBy(ChallengesTable.challengeId, UsersTable.userId)
+      .orderBy(asc(ChallengesTable.scheduledAt))
       .limit(pageSize)
       .offset(page * pageSize);
 
     return result;
   }
 
+  async getTotalChallenges(): Promise<number> {
+    const [result] = await this.db
+      .select({ count: count() })
+      .from(ChallengesTable);
+
+    return result.count || 0;
+  }
+
   async getUserChallenge(
     userId: string,
     challengeId: string,
-  ): Promise<UserChallenge> {
+  ): Promise<UserChallenge | null> {
     const [userChallenge] = await this.db
       .select()
       .from(UserChallengesTable)
@@ -121,8 +133,7 @@ export class ChallengeService {
       )
       .limit(1);
 
-    if (!userChallenge) throw new NotFoundError("User challenge not found");
-    return userChallenge;
+    return userChallenge ?? null;
   }
 
   async getActiveChallenges(): Promise<Challenge[]> {
@@ -131,7 +142,7 @@ export class ChallengeService {
       .from(ChallengesTable)
       .where(
         and(
-          sql`${ChallengesTable.scheduledTime} > NOW()`,
+          sql`${ChallengesTable.scheduledAt} > NOW()`,
           eq(ChallengesTable.privacy, "Open"),
         ),
       );
@@ -241,7 +252,6 @@ export class ChallengeService {
 
     if (existingUserChallenge) {
       // throw new DatabaseError("User already in challenge");
-      console.log("User already in challenge", existingUserChallenge);
       return existingUserChallenge;
     }
 
@@ -269,5 +279,40 @@ export class ChallengeService {
           eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
         ),
       );
+  }
+
+  async getChallengeParticipantsCount(challengeId: string): Promise<number> {
+    const [result] = await this.db
+      .select({ count: count() })
+      .from(UserChallengesTable)
+      .where(
+        and(
+          eq(UserChallengesTable.challengeId, challengeId),
+          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+        ),
+      );
+
+    return result.count || 0;
+  }
+
+  async updateChallenge(challengeId: string, data: Partial<Challenge>) {
+    const [updated] = await this.db
+      .update(ChallengesTable)
+      .set(data)
+      .where(eq(ChallengesTable.challengeId, challengeId))
+      .returning();
+
+    if (!updated) throw new NotFoundError("Challenge not found");
+    return updated;
+  }
+
+  async getUnstartedChallenges() {
+    return this.db
+      .select({
+        challengeId: ChallengesTable.challengeId,
+        scheduledAt: ChallengesTable.scheduledAt,
+      })
+      .from(ChallengesTable)
+      .where(gt(ChallengesTable.scheduledAt, sql`NOW()`));
   }
 }

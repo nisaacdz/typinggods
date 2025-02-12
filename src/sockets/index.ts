@@ -124,15 +124,15 @@ export default function initializeSockets(
     let userUpdateTimeout: NodeJS.Timeout | null = null;
     let roomUpdateTimeout: NodeJS.Timeout | null = null;
 
-    socket.on("enter_challenge", async (challengeId) => {
+    socket.on("enter-challenge", async (challengeId) => {
       let challenge =
         await appService.challengeService.getChallengeById(challengeId);
       if (!challenge) {
         return socket.emit("error", "Challenge not found");
       }
-      // If challenge has started or entrance window has closed
+
       if (
-        challenge.scheduledTime.getTime() -
+        challenge.scheduledAt.getTime() -
           appService.challengeService.challengeClosedWindow <
         Date.now()
       ) {
@@ -155,6 +155,7 @@ export default function initializeSockets(
           UserChallengeStatus.Accepted,
         );
       }
+
       if (!userChallenge) {
         return socket.emit("error", "Failed to enter typing zone");
       }
@@ -179,7 +180,7 @@ export default function initializeSockets(
       io.to(challenge.challengeId).emit("entered", participants);
     });
 
-    socket.on("on_type", async (data) => {
+    socket.on("on-type", async (data) => {
       const { character } = data;
 
       if (typeof character !== "string" || character.length > 1) {
@@ -229,7 +230,7 @@ export default function initializeSockets(
       }
     });
 
-    socket.on("leave_challenge", async () => {
+    socket.on("leave-challenge", async () => {
       if (!enteredChallenge) {
         return socket.emit("error", "You are not in a challenge");
       }
@@ -257,11 +258,28 @@ export default function initializeSockets(
       enteredTypingSession = null;
     });
 
-    socket.on("disconnect", () => {
-      if (enteredTypingSession) {
-        socket.leave(enteredTypingSession.challengeId);
-      }
-      console.log("Client disconnected:", socket.id);
-    });
+    socket.on("disconnect", () => {});
   });
+
+  (async () => {
+    const unstartedChallenges =
+      await appService.challengeService.getUnstartedChallenges();
+    unstartedChallenges.forEach((challenge) => {
+      const startIn = Math.max(0, challenge.scheduledAt.getTime() - Date.now());
+      setTimeout(async () => {
+        const count =
+          await appService.challengeService.getChallengeParticipantsCount(
+            challenge.challengeId,
+          );
+        if (count > 0) {
+          console.log("Starting challenge", challenge.challengeId);
+          await appService.challengeService.updateChallenge(
+            challenge.challengeId,
+            { startedAt: new Date() },
+          );
+          io.to(challenge.challengeId).emit("start-challenge");
+        }
+      }, startIn);
+    });
+  })();
 }

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS "challenges" (
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"scheduled_time" timestamp NOT NULL,
+	"started_at" timestamp,
 	"privacy" "challenge_privacy" DEFAULT 'Open' NOT NULL,
 	"duration_seconds" integer NOT NULL
 );

@@ -12,6 +12,7 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { start } from "repl";
 
 /**
  * Auth Providers Table
@@ -91,7 +92,8 @@ export const ChallengesTable = pgTable("challenges", {
     .notNull()
     .references(() => UsersTable.userId),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  scheduledTime: timestamp("scheduled_time").notNull(),
+  scheduledAt: timestamp("scheduled_time").notNull(),
+  startedAt: timestamp("started_at"),
   privacy: ChallengePrivacyEnum("privacy")
     .notNull()
     .default(ChallengePrivacy.Open),

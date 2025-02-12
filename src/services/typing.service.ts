@@ -51,7 +51,7 @@ export class TypingService {
         .values({
           userId,
           challengeId,
-          startTime: challenge.scheduledTime,
+          startTime: challenge.scheduledAt,
         })
         .returning();
 

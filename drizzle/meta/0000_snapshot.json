@@ -1,5 +1,5 @@
 {
-  "id": "d05202d5-9252-4ee6-93f7-a932b78b2491",
+  "id": "583def89-db90-4da8-9414-6ac4b4390941",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -86,6 +86,12 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         },
         "privacy": {
           "name": "privacy",

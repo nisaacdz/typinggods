@@ -4,6 +4,8 @@ import {
   AuthProvidersTable,
   ChallengePrivacy,
   ChallengesTable,
+  TypingSessionsTable,
+  UserChallengesTable,
   UsersTable,
 } from "./schema/db.schema"; // Table schema for auth providers
 import { count, eq, or, lt } from "drizzle-orm";
@@ -89,9 +91,10 @@ const seedChallenges = async () => {
   // Assign to only invitational challenges
   // Create aproximately half Public and half Invitational challenge
 
-  await db
-    .delete(ChallengesTable)
-    .where(lt(ChallengesTable.scheduledTime, new Date()));
+  await db.delete(TypingSessionsTable);
+  await db.delete(UserChallengesTable);
+  await db.delete(ChallengesTable);
+
   const [remainingChallenges] = await db
     .select({ count: count() })
     .from(ChallengesTable)
@@ -108,7 +111,7 @@ const seedChallenges = async () => {
     { length: 50 - remainingChallenges.count },
     (_, i) => {
       const isPublic = Math.random() < 0.5;
-      const scheduledTime = new Date(
+      const scheduledAt = new Date(
         Date.now() + 120000 + 1000 * 60 * Math.floor(Math.random() * 10),
       );
       const duration = Math.floor(Math.random() * (10 * 60 - 15) + 15);
@@ -118,7 +121,7 @@ const seedChallenges = async () => {
           : ChallengePrivacy.Invitational,
         createdBy: users[i % users.length].userId,
         text: faker.lorem.words(24),
-        scheduledTime,
+        scheduledAt,
         duration,
       };
     },
