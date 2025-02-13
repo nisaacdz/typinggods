@@ -269,16 +269,32 @@ export class ChallengeService {
 
   async getChallengeParticipants(
     challengeId: string,
-  ): Promise<UserChallenge[]> {
+  ) {
     return this.db
-      .select()
+      .select({...getTableColumns(UserChallengesTable), username: UsersTable.username})
       .from(UserChallengesTable)
+      .innerJoin(UsersTable, eq(UserChallengesTable.userId, UsersTable.userId))
       .where(
         and(
           eq(UserChallengesTable.challengeId, challengeId),
           eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
         ),
       );
+  }
+
+  async getChallengeParticipant(challengeId: string, userId: string) {
+    return this.db
+      .select({...getTableColumns(UserChallengesTable), username: UsersTable.username})
+      .from(UserChallengesTable)
+      .innerJoin(UsersTable, eq(UserChallengesTable.userId, UsersTable.userId))
+      .where(
+        and(
+          eq(UserChallengesTable.challengeId, challengeId),
+          eq(UserChallengesTable.userId, userId),
+          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+        ),
+      )
+      .limit(1);
   }
 
   async getChallengeParticipantsCount(challengeId: string): Promise<number> {

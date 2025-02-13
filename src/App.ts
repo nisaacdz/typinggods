@@ -96,6 +96,7 @@ io.engine.use(sessionMiddleware);
 io.use(async (socket, next) => {
   const user = getCurrentUser(socket.request.session);
   if (user) {
+    console.log("User already connected:", user.username);
     return next();
   } else if (socket.request.session) {
     socket.request.session.user = await login("password", "username");
