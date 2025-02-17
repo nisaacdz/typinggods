@@ -1,0 +1,1 @@
+ALTER TABLE "challenges" RENAME COLUMN "scheduled_time" TO "scheduled_at";
