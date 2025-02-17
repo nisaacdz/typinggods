@@ -5,7 +5,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "public"."user_challenge_status" AS ENUM('Accepted', 'Rejected', 'Pending', 'Completed', 'Abondoned');
+ CREATE TYPE "public"."user_challenge_status" AS ENUM('Accepted', 'Rejected', 'Pending', 'Completed', 'Abandoned');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS "challenges" (
 	"text" text NOT NULL,
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
-	"scheduled_time" timestamp NOT NULL,
+	"scheduled_at" timestamp NOT NULL,
 	"started_at" timestamp,
 	"privacy" "challenge_privacy" DEFAULT 'Open' NOT NULL,
 	"duration_seconds" integer NOT NULL
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS "typing_sessions" (
 	"session_id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"challenge_id" uuid NOT NULL,
-	"start_time" timestamp DEFAULT now() NOT NULL,
+	"start_time" timestamp DEFAULT now(),
 	"end_time" timestamp,
 	"wpm" integer,
 	"accuracy" integer,

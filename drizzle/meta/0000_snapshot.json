@@ -1,5 +1,5 @@
 {
-  "id": "583def89-db90-4da8-9414-6ac4b4390941",
+  "id": "dac5e861-3781-42d4-926e-20df5806b407",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -81,8 +81,8 @@
           "notNull": true,
           "default": "now()"
         },
-        "scheduled_time": {
-          "name": "scheduled_time",
+        "scheduled_at": {
+          "name": "scheduled_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true
@@ -150,7 +150,7 @@
           "name": "start_time",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "now()"
         },
         "end_time": {
@@ -488,7 +488,7 @@
     "public.user_challenge_status": {
       "name": "user_challenge_status",
       "schema": "public",
-      "values": ["Accepted", "Rejected", "Pending", "Completed", "Abondoned"]
+      "values": ["Accepted", "Rejected", "Pending", "Completed", "Abandoned"]
     }
   },
   "schemas": {},

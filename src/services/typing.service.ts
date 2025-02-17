@@ -21,13 +21,6 @@ export class TypingService {
     userId: string,
     challengeId: string,
   ): Promise<TypingSession> {
-    const [challenge] = await this.db
-      .select()
-      .from(ChallengesTable)
-      .where(eq(ChallengesTable.challengeId, challengeId))
-      .limit(1);
-
-    if (!challenge) throw new NotFoundError("Challenge not found");
 
     return this.db.transaction(async (tx) => {
       // Check for existing active session
@@ -37,7 +30,7 @@ export class TypingService {
         .where(
           and(
             eq(TypingSessionsTable.userId, userId),
-            not(isNotNull(TypingSessionsTable.endTime)),
+            eq(TypingSessionsTable.challengeId, challengeId),
           ),
         )
         .limit(1);

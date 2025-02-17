@@ -6,12 +6,12 @@ import {
   UserChallengeStatus,
 } from "../db/schema/db.schema";
 
-const BatchUserUpdateInterval = 50;
-const BatchRoomUpdateInterval = 200;
+const BatchUserUpdateInterval = 80;
+const BatchRoomUpdateInterval = 240;
 const BatchUserUpdateLength = 5;
-const BatchRoomUpdateLength = 20;
+const BatchRoomUpdateLength = 16;
 
-const scheduledChallenges = new Set<string>(); // Using a Set to track scheduled challenges
+const scheduledChallenges = new Set<string>();
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -91,7 +91,7 @@ const updateUserTypingSession = (
         typingSession.correctPosition++;
         typingSession.currentPosition++;
       } else {
-        // Incorrect character (track error position)
+        // Incorrect character
         typingSession.currentPosition++;
       }
     }
@@ -164,17 +164,18 @@ export default function initializeSockets(io: Server, appService: AppService) {
     let roomUpdateTimeout: NodeJS.Timeout | null = null;
 
     try {
-      const userChallenge = await appService.challengeService.getUserChallenge(
+      const userChallenge = await appService.challengeService.getCurrentUserChallenge(
         user.userId,
       );
       if (!userChallenge) {
-        socket.emit("error", "Challenge not found");
+        socket.emit("error", "User Challenge not found");
         return socket.disconnect(true);
       }
 
       enteredChallenge = await appService.challengeService.getChallengeById(
         userChallenge.challengeId,
       );
+      
       if (!enteredChallenge) {
         socket.emit("error", "Challenge not found");
         return socket.disconnect(true);
@@ -219,14 +220,18 @@ export default function initializeSockets(io: Server, appService: AppService) {
       try {
         if (!enteredTypingSession) {
           enteredTypingSession =
-            await appService.typingService.getOrCreateTypingSession(
-              user.userId,
+            await appService.typingService.getTypingSession(
               enteredChallenge.challengeId,
+              user.userId,
             );
 
           if (!enteredTypingSession) {
             return socket.emit("error", "Failed to initialize typing session");
           }
+        }
+
+        if (enteredTypingSession.endTime) {
+          return socket.emit("error", "You have already finished the race");
         }
 
         enteredTypingSession.startTime =
@@ -239,7 +244,6 @@ export default function initializeSockets(io: Server, appService: AppService) {
 
         typedText += character;
 
-        // Process batch updates
         if (typedText.length >= BatchUserUpdateLength || !userUpdateTimeout) {
           const inputString = typedText;
           typedText = "";
@@ -277,7 +281,6 @@ export default function initializeSockets(io: Server, appService: AppService) {
           }, BatchUserUpdateInterval);
         }
 
-        // Room updates
         if (typedText.length >= BatchRoomUpdateLength || !roomUpdateTimeout) {
           if (roomUpdateTimeout) clearTimeout(roomUpdateTimeout);
 

@@ -1,0 +1,1 @@
+ALTER TABLE "typing_sessions" ALTER COLUMN "start_time" DROP DEFAULT;

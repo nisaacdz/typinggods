@@ -177,7 +177,7 @@ export const TypingSessionsTable = pgTable(
     challengeId: uuid("challenge_id")
       .notNull()
       .references(() => ChallengesTable.challengeId),
-    startTime: timestamp("start_time").defaultNow(),
+    startTime: timestamp("start_time"),
     endTime: timestamp("end_time"),
     wpm: integer("wpm"),
     accuracy: integer("accuracy"),

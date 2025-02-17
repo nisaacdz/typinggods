@@ -1,6 +1,7 @@
 import { type NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   eq,
+  or,
   and,
   sql,
   inArray,
@@ -79,8 +80,6 @@ export class ChallengeService {
       .from(ChallengesTable)
       .where(eq(ChallengesTable.challengeId, challengeId))
       .limit(1);
-
-    if (!challenge) throw new NotFoundError("Challenge not found");
     return challenge ?? null;
   }
 
@@ -127,14 +126,14 @@ export class ChallengeService {
     return result.count || 0;
   }
 
-  async getUserChallenge(userId: string): Promise<UserChallenge | null> {
+  async getCurrentUserChallenge(userId: string): Promise<UserChallenge | null> {
     const [userChallenge] = await this.db
       .select()
       .from(UserChallengesTable)
       .where(
         and(
           eq(UserChallengesTable.userId, userId),
-          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+          or(eq(UserChallengesTable.status, UserChallengeStatus.Accepted), eq(UserChallengesTable.status, UserChallengeStatus.Completed))
         ),
       )
       .limit(1);
@@ -238,8 +237,7 @@ export class ChallengeService {
       )
       .returning();
 
-    if (!updated) throw new NotFoundError("Challenge invitation not found");
-    return updated;
+    return updated || null;
   }
 
   async enterPublicChallenge(
@@ -261,22 +259,37 @@ export class ChallengeService {
     if (!challenge) {
       throw new NotFoundError("Public challenge not found");
     }
-
-    const [existingUserChallenge] = await this.db
+    // Already in or completed same challenge
+    const [sameChallenge] = await this.db
       .select()
       .from(UserChallengesTable)
       .where(
         and(
           eq(UserChallengesTable.userId, userId),
           eq(UserChallengesTable.challengeId, challengeId),
-          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+          inArray(UserChallengesTable.status, [UserChallengeStatus.Accepted, UserChallengeStatus.Completed])
         ),
       )
       .limit(1);
+    
+    if (sameChallenge) {
+      return sameChallenge;
+    }
 
-    if (existingUserChallenge) {
-      // throw new DatabaseError("User already in challenge");
-      return existingUserChallenge;
+    // In a diffferent challenge
+    const [differentChallenge] = await this.db
+    .select()
+    .from(UserChallengesTable)
+    .where(
+      and(
+        eq(UserChallengesTable.userId, userId),
+        eq(UserChallengesTable.status, UserChallengeStatus.Accepted)
+      ),
+    )
+    .limit(1);
+
+    if (differentChallenge) {
+      throw new Error("user already in a different challenge");
     }
 
     const [userChallenge] = await this.db
@@ -288,11 +301,10 @@ export class ChallengeService {
       })
       .returning();
 
-    return userChallenge;
+    return userChallenge || null;
   }
 
   async enterInvitationalChallenge(challengeId: string, userId: string) {
-    // placeholder
     return this.enterPublicChallenge(userId, challengeId);
   }
 
@@ -319,7 +331,7 @@ export class ChallengeService {
         and(
           eq(UserChallengesTable.challengeId, challengeId),
           eq(UserChallengesTable.userId, userId),
-          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+          or(eq(UserChallengesTable.status, UserChallengeStatus.Accepted), eq(UserChallengesTable.status, UserChallengeStatus.Completed))
         ),
       )
       .limit(1);

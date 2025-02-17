@@ -1,1 +1,0 @@
-ALTER TYPE "user_challenge_status" ADD VALUE 'Abandoned';

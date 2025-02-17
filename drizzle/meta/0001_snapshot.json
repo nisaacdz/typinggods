@@ -1,6 +1,6 @@
 {
-  "id": "ff19e706-1ada-418a-9ab0-9854e779925f",
-  "prevId": "583def89-db90-4da8-9414-6ac4b4390941",
+  "id": "d0121686-4070-49bb-9338-179a08c76945",
+  "prevId": "dac5e861-3781-42d4-926e-20df5806b407",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -150,8 +150,7 @@
           "name": "start_time",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": false
         },
         "end_time": {
           "name": "end_time",
@@ -488,7 +487,7 @@
     "public.user_challenge_status": {
       "name": "user_challenge_status",
       "schema": "public",
-      "values": ["Accepted", "Rejected", "Pending", "Completed", "Abondoned"]
+      "values": ["Accepted", "Rejected", "Pending", "Completed", "Abandoned"]
     }
   },
   "schemas": {},
