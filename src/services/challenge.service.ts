@@ -133,7 +133,10 @@ export class ChallengeService {
       .where(
         and(
           eq(UserChallengesTable.userId, userId),
-          or(eq(UserChallengesTable.status, UserChallengeStatus.Accepted), eq(UserChallengesTable.status, UserChallengeStatus.Completed))
+          or(
+            eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+            eq(UserChallengesTable.status, UserChallengeStatus.Completed),
+          ),
         ),
       )
       .limit(1);
@@ -267,26 +270,29 @@ export class ChallengeService {
         and(
           eq(UserChallengesTable.userId, userId),
           eq(UserChallengesTable.challengeId, challengeId),
-          inArray(UserChallengesTable.status, [UserChallengeStatus.Accepted, UserChallengeStatus.Completed])
+          inArray(UserChallengesTable.status, [
+            UserChallengeStatus.Accepted,
+            UserChallengeStatus.Completed,
+          ]),
         ),
       )
       .limit(1);
-    
+
     if (sameChallenge) {
       return sameChallenge;
     }
 
     // In a diffferent challenge
     const [differentChallenge] = await this.db
-    .select()
-    .from(UserChallengesTable)
-    .where(
-      and(
-        eq(UserChallengesTable.userId, userId),
-        eq(UserChallengesTable.status, UserChallengeStatus.Accepted)
-      ),
-    )
-    .limit(1);
+      .select()
+      .from(UserChallengesTable)
+      .where(
+        and(
+          eq(UserChallengesTable.userId, userId),
+          eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+        ),
+      )
+      .limit(1);
 
     if (differentChallenge) {
       throw new Error("user already in a different challenge");
@@ -331,7 +337,10 @@ export class ChallengeService {
         and(
           eq(UserChallengesTable.challengeId, challengeId),
           eq(UserChallengesTable.userId, userId),
-          or(eq(UserChallengesTable.status, UserChallengeStatus.Accepted), eq(UserChallengesTable.status, UserChallengeStatus.Completed))
+          or(
+            eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+            eq(UserChallengesTable.status, UserChallengeStatus.Completed),
+          ),
         ),
       )
       .limit(1);

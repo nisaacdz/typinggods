@@ -120,6 +120,7 @@ const updateUserTypingSession = (
 
   appService.typingService
     .updateSessionProgress(typingSession.sessionId, {
+      startTime: typingSession.startTime!,
       endTime: typingSession.endTime,
       wpm: typingSession.wpm,
       accuracy: typingSession.accuracy,
@@ -164,9 +165,8 @@ export default function initializeSockets(io: Server, appService: AppService) {
     let roomUpdateTimeout: NodeJS.Timeout | null = null;
 
     try {
-      const userChallenge = await appService.challengeService.getCurrentUserChallenge(
-        user.userId,
-      );
+      const userChallenge =
+        await appService.challengeService.getCurrentUserChallenge(user.userId);
       if (!userChallenge) {
         socket.emit("error", "User Challenge not found");
         return socket.disconnect(true);
@@ -175,7 +175,7 @@ export default function initializeSockets(io: Server, appService: AppService) {
       enteredChallenge = await appService.challengeService.getChallengeById(
         userChallenge.challengeId,
       );
-      
+
       if (!enteredChallenge) {
         socket.emit("error", "Challenge not found");
         return socket.disconnect(true);

@@ -21,7 +21,6 @@ export class TypingService {
     userId: string,
     challengeId: string,
   ): Promise<TypingSession> {
-
     return this.db.transaction(async (tx) => {
       // Check for existing active session
       const [existingSession] = await tx
@@ -67,14 +66,7 @@ export class TypingService {
 
   async updateSessionProgress(
     sessionId: string,
-    update: {
-      correctPosition: number;
-      currentPosition: number;
-      wpm: number;
-      accuracy: number;
-      totalKeystrokes: number;
-      endTime: Date | null;
-    },
+    update: Partial<TypingSession>,
   ): Promise<TypingSession> {
     const [session] = await this.db
       .update(TypingSessionsTable)
