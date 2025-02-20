@@ -2,75 +2,60 @@
 
 ## Description
 
-The Typing Gods Backend is a robust and scalable backend application built to power real-time, multi-user typing experiences. Leveraging the power of ExpressJS and a well-structured MVC architecture, it provides a solid foundation for handling complex application logic and data management.  This backend is designed to manage typing sessions for multiple participants simultaneously, ensuring a smooth and responsive user experience.
+Typing Gods Backend powers real-time, multi-user typing experiences. Built with ExpressJS and MVC, it manages typing sessions for multiple participants using Websockets and Socket.IO.  It uses Neon Postgres and Drizzle for database management.
 
 ## Technologies Used
 
-*   **Backend Framework:** [ExpressJS](https://expressjs.com/) - A minimal and flexible Node.js web application framework that provides a robust set of features for web and mobile applications.
-*   **Design Pattern:** Model-View-Controller (MVC) - An architectural pattern that separates an application into three main logical components: the model, the view, and the controller, to facilitate development and maintainability.
-*   **Dependency Injection:**  A design pattern in which an object receives other objects that it depends on (dependencies). Dependency injection aims to separate the concerns of constructing objects and using them, leading to loosely coupled and testable code.
-*   **Real-time Communication:** [WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) & [Socket.IO](https://socket.io/) -  WebSockets provide full-duplex communication channels over a single TCP connection. Socket.IO is a library that enables real-time, bidirectional and event-based communication between web browsers and servers, particularly useful for applications requiring live updates and interactions.
-*   **Database:** [Neon Postgres](https://neon.tech/) - A serverless, fully managed PostgreSQL database designed for modern applications, offering scalability and ease of use.
-*   **ORM (Object-Relational Mapper):** [Drizzle ORM](https://orm.drizzle.team/) - A modern TypeScript ORM that provides type-safe database access and schema management for PostgreSQL.
-*   **Database Migrations:** [Drizzle Kit](https://kit.drizzle.team/) - A toolkit for Drizzle ORM that helps manage database schema migrations and generate migration files.
-*   **Package Manager:** [npm](https://www.npmjs.com/) - The package manager for JavaScript, used for managing project dependencies and running scripts.
+*   **Backend Framework:** [ExpressJS](https://expressjs.com/)
+*   **Design Pattern:** MVC (Model-View-Controller)
+*   **Dependency Injection**
+*   **Real-time Communication:** [WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) & [Socket.IO](https://socket.io/)
+*   **Database:** [Neon Postgres](https://neon.tech/)
+*   **ORM:** [Drizzle ORM](https://orm.drizzle.team/)
+*   **Database Migrations:** [Drizzle Kit](https://kit.drizzle.team/)
+*   **Package Manager:** [npm](https://www.npmjs.com/)
 
 ## Getting Started
 
-To get the Typing Gods Backend application running, follow these steps:
+To run the Typing Gods Backend:
 
 ### Prerequisites
 
-Ensure you have the following installed:
-
-*   [Node.js](https://nodejs.org/) (version 18 or higher recommended)
-*   [npm](https://www.npmjs.com/) (usually comes with Node.js installation)
-*   A [Neon Postgres](https://neon.tech/) account is required for database setup and connection.
+*   [Node.js](https://nodejs.org/) (v18+)
+*   [npm](https://www.npmjs.com/)
+*   [Neon Postgres](https://neon.tech/) account
 
 ### Installation
 
-1.  **Clone the repository:**
-
-    Open your terminal and clone the repository from GitHub:
-
+1.  **Clone:**
     ```bash
     git clone [https://github.com/nisaacdz/typinggods.git](https://www.google.com/search?q=https://github.com/nisaacdz/typinggods.git)
     cd typinggods/backend
     ```
 
-2.  **Install Dependencies:**
-
-    Navigate into the `backend` directory and install the required npm packages:
-
+2.  **Install:**
     ```bash
     npm install
     ```
 
-### Database Setup and Migrations
+### Database Setup & Migrations
 
-1.  **Environment Configuration:**
+1.  **Environment:**
+    *   **Contact Isaac (me) for the `.env` file** (includes Neon Postgres connection details).
 
-    Before running database migrations, you will need environment variables configured, especially for database connection.  **Contact Isaac (me) to obtain the `.env` file** which contains necessary configuration, including database connection details for Neon Postgres.
-
-2.  **Generate Database Migrations:**
-
-    Run the following command to generate migration files based on your Drizzle schema:
-
+2.  **Generate Migrations:**
     ```bash
     npx drizzle-kit generate
     ```
 
-3.  **Apply Database Migrations:**
-
-    Apply the generated migrations to your Neon Postgres database to update the schema:
-
+3.  **Apply Migrations:**
     ```bash
     npx drizzle-kit migrate
     ```
 
-### Seed Database with Demo Data (Development)
+### Seed (Development)
 
-For development and testing purposes, you can seed the database with demo data. Run the seed script using npm:
+For development, seed the database with demo data:
 
 ```bash
 npm run seed
