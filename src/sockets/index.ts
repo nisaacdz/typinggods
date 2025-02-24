@@ -4,55 +4,96 @@ import {
   Challenge,
   TypingSession,
   UserChallengeStatus,
+  UserChallengeStatusType,
 } from "../db/schema/db.schema";
 
-const BatchUserUpdateInterval = 80;
-const BatchRoomUpdateInterval = 240;
-const BatchUserUpdateLength = 5;
-const BatchRoomUpdateLength = 16;
+const MaxUserUpdateWaitDuration = 100;
+const MaxUserUpdateInputLength = 5;
+const EnterableUserChallengeStatuses: UserChallengeStatusType[] = [
+  UserChallengeStatus.Accepted,
+  UserChallengeStatus.Completed,
+];
 
 const scheduledChallenges = new Set<string>();
+const startedChallenges: Record<string, Challenge> = {};
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const scheduleTypingChallengeStart = async (
-  challengeId: string,
+// Improvement 1: Central error handler
+const handleError = (socket: Socket, errorMessage: string) => {
+  socket.emit("error", errorMessage);
+  console.error(`Socket Error (${socket.id}): ${errorMessage}`);
+};
+
+// Improvement 3: Input validation helper
+const isValidInput = (character: unknown): character is string => {
+  return typeof character === "string" && character.length === 1;
+};
+
+enum ScheduleTypingResult {
+  AlreadyStarted,
+  AlreadyScheduled,
+  Success,
+  Failed,
+}
+
+const scheduleTypingChallengeStart = (
+  enteredChallenge: Challenge,
   appService: AppService,
   io: Server,
 ) => {
-  if (scheduledChallenges.has(challengeId)) return;
+  if (enteredChallenge.startedAt) return ScheduleTypingResult.AlreadyStarted;
+  if (scheduledChallenges.has(enteredChallenge.challengeId))
+    return ScheduleTypingResult.AlreadyScheduled;
 
-  const challenge =
-    await appService.challengeService.getChallengeById(challengeId);
-  if (!challenge || challenge.startedAt) return;
+  const startIn = Math.max(
+    enteredChallenge.scheduledAt.getTime() - Date.now(),
+    1000,
+  );
+  scheduledChallenges.add(enteredChallenge.challengeId);
 
-  const startIn = Math.max(challenge.scheduledAt.getTime() - Date.now(), 0);
+  (async () => {
+    try {
+      await delay(startIn);
+      const startedChallenge =
+        await appService.challengeService.startUnstartedChallenge(
+          enteredChallenge.challengeId,
+        );
 
-  scheduledChallenges.add(challengeId);
+      if (!startedChallenge || !startedChallenge.startedAt) {
+        throw new Error("Failed to start challenge");
+      }
 
-  let startedChallenge: Challenge | null = null;
+      startedChallenges[enteredChallenge.challengeId] = startedChallenge;
 
-  try {
-    await delay(startIn);
-    startedChallenge = await appService.challengeService.updateChallenge(
-      challengeId,
-      {
-        startedAt: new Date(),
-      },
-    );
-  } finally {
-    scheduledChallenges.delete(challengeId);
-  }
+      const participants =
+        await appService.challengeService.getChallengeParticipants(
+          startedChallenge.challengeId,
+        );
 
-  return startedChallenge;
+      io.to(startedChallenge.challengeId).emit("start-challenge", {
+        challengeId: startedChallenge.challengeId,
+        typingText: startedChallenge.text,
+        participants,
+      });
+    } catch (err) {
+      io.to(enteredChallenge.challengeId).emit(
+        "error",
+        "Challenge failed to start",
+      );
+      console.error("Scheduling error:", err);
+    } finally {
+      scheduledChallenges.delete(enteredChallenge.challengeId);
+    }
+  })();
+
+  return ScheduleTypingResult.Success;
 };
 
 const updateUserTypingSession = (
   typingSession: TypingSession,
   inputString: string,
   challengeText: string,
-  appService: AppService,
-  socket: Socket,
 ) => {
   const now = Date.now();
   const elapsedTime = now - typingSession.startTime!.getTime();
@@ -117,201 +158,175 @@ const updateUserTypingSession = (
           (typingSession.correctPosition / typingSession.totalKeystrokes!) *
             100,
         );
-
-  appService.typingService
-    .updateSessionProgress(typingSession.sessionId, {
-      startTime: typingSession.startTime!,
-      endTime: typingSession.endTime,
-      wpm: typingSession.wpm,
-      accuracy: typingSession.accuracy,
-      totalKeystrokes: typingSession.totalKeystrokes,
-      correctPosition: typingSession.correctPosition,
-      currentPosition: typingSession.currentPosition,
-    })
-    .then((_) => {
-      socket.emit("user-update", typingSession);
-    })
-    .catch((error: any) => {
-      socket.emit("error", error.message);
-    });
-};
-
-const updateChallengeRoom = async (
-  challengeId: string,
-  appService: AppService,
-  io: Server,
-) => {
-  try {
-    const participantUpdates =
-      await appService.challengeService.getChallengeParticipants(challengeId);
-    io.to(challengeId).emit("room-update", participantUpdates);
-  } catch (error) {
-    console.error("Error updating challenge room:", error);
-  }
 };
 
 export default function initializeSockets(io: Server, appService: AppService) {
-  io.on("connection", async (socket) => {
+  io.on("connection", (socket) => {
     const user = socket.request.session?.user;
-    if (!user?.userId) {
-      socket.emit("error", "Unauthorized");
+    if (!user) {
+      handleError(socket, "Unauthorized");
       return socket.disconnect(true);
     }
 
     let enteredChallenge: Challenge | null = null;
-    let enteredTypingSession: TypingSession | null = null;
+    let enteredTypingSession: (TypingSession & { username: string }) | null =
+      null;
     let typedText = "";
     let userUpdateTimeout: NodeJS.Timeout | null = null;
-    let roomUpdateTimeout: NodeJS.Timeout | null = null;
 
-    try {
-      const userChallenge =
-        await appService.challengeService.getCurrentUserChallenge(user.userId);
-      if (!userChallenge) {
-        socket.emit("error", "User Challenge not found");
-        return socket.disconnect(true);
-      }
-
-      enteredChallenge = await appService.challengeService.getChallengeById(
-        userChallenge.challengeId,
-      );
-
-      if (!enteredChallenge) {
-        socket.emit("error", "Challenge not found");
-        return socket.disconnect(true);
-      }
-
-      const participant =
-        await appService.challengeService.getChallengeParticipant(
-          enteredChallenge.challengeId,
-          user.userId,
+    const asyncHandler = (handler: Function) => {
+      return (...args: any[]) => {
+        handler(...args).catch((err: Error) =>
+          handleError(socket, err.message),
         );
-      socket.join(enteredChallenge.challengeId);
-      io.to(enteredChallenge.challengeId).emit("entered", participant);
-      await updateChallengeRoom(enteredChallenge.challengeId, appService, io);
-      enteredTypingSession =
-        await appService.typingService.getOrCreateTypingSession(
-          user.userId,
-          enteredChallenge.challengeId,
-        );
-      scheduleTypingChallengeStart(
-        enteredChallenge.challengeId,
-        appService,
-        io,
-      ).then(async (startedChallenge) => {
-        if (!startedChallenge) return;
-        enteredChallenge = startedChallenge;
+      };
+    };
+
+    socket.on(
+      "enter-challenge",
+      asyncHandler(async ({ challengeId }: { challengeId: string }) => {
+        const userChallenge =
+          await appService.challengeService.getUserChallengeByIds(
+            user.userId,
+            challengeId,
+          );
+
+        if (
+          !userChallenge ||
+          !EnterableUserChallengeStatuses.includes(userChallenge.status)
+        ) {
+          throw new Error("Cannot enter challenge");
+        }
+
+        enteredChallenge =
+          await appService.challengeService.getChallengeById(challengeId);
+
+        if (!enteredChallenge) {
+          throw new Error("Challenge not found");
+        }
+
+        const userSession =
+          await appService.typingService.getOrCreateTypingSession(
+            user.userId,
+            enteredChallenge.challengeId,
+          );
+
+        if (!userSession) {
+          throw new Error("Failed to create typing session");
+        }
+
+        enteredTypingSession = { ...userSession, username: user.username };
+        socket.join(enteredChallenge.challengeId);
         io.to(enteredChallenge.challengeId).emit(
-          "start-challenge",
-          enteredChallenge.text,
+          "entered",
+          enteredTypingSession,
         );
-        await updateChallengeRoom(enteredChallenge.challengeId, appService, io);
-      });
-    } catch (error) {
-      socket.emit("error", "Initialization failed");
-      return socket.disconnect(true);
-    }
 
-    socket.on("on-type", async (data) => {
-      if (!enteredChallenge?.startedAt) {
-        return socket.emit("error", "Challenge has not started yet");
-      }
+        const scheduleResult = scheduleTypingChallengeStart(
+          enteredChallenge,
+          appService,
+          io,
+        );
 
-      try {
-        if (!enteredTypingSession) {
-          enteredTypingSession =
-            await appService.typingService.getTypingSession(
-              enteredChallenge.challengeId,
-              user.userId,
-            );
+        switch (scheduleResult) {
+          case ScheduleTypingResult.AlreadyStarted:
+            const participants =
+              await appService.challengeService.getChallengeParticipants(
+                enteredChallenge.challengeId,
+              );
+            socket.emit("start-challenge", {
+              // Changed to socket.emit
+              challengeId: enteredChallenge.challengeId,
+              typingText: enteredChallenge.text,
+              participants,
+            });
+            break;
+          case ScheduleTypingResult.Success:
+            break;
+          case ScheduleTypingResult.AlreadyScheduled:
+            break;
+        }
+      }),
+    );
 
-          if (!enteredTypingSession) {
-            return socket.emit("error", "Failed to initialize typing session");
-          }
+    socket.on(
+      "on-type",
+      asyncHandler(async (data: { character: string }) => {
+        if (!enteredTypingSession || !enteredChallenge) {
+          throw new Error("No challenge entered");
+        }
+
+        if (!enteredChallenge.startedAt) {
+          enteredChallenge =
+            startedChallenges[enteredChallenge.challengeId] || enteredChallenge;
+        }
+
+        if (!enteredChallenge.startedAt) {
+          throw new Error("Challenge has not started yet");
         }
 
         if (enteredTypingSession.endTime) {
-          return socket.emit("error", "You have already finished the race");
+          throw new Error("You have already finished the race");
         }
-
-        enteredTypingSession.startTime =
-          enteredTypingSession.startTime || new Date();
 
         const { character } = data;
-        if (typeof character !== "string" || character.length > 1) {
-          return console.warn("Invalid character input:", character);
+        if (!isValidInput(character)) {
+          throw new Error("Invalid character input");
         }
 
+        enteredTypingSession.startTime ||= new Date();
         typedText += character;
 
-        if (typedText.length >= BatchUserUpdateLength || !userUpdateTimeout) {
+        if (
+          typedText.length >= MaxUserUpdateInputLength ||
+          !userUpdateTimeout
+        ) {
           const inputString = typedText;
           typedText = "";
 
           if (userUpdateTimeout) clearTimeout(userUpdateTimeout);
 
           userUpdateTimeout = setTimeout(async () => {
-            try {
-              updateUserTypingSession(
+            updateUserTypingSession(
+              enteredTypingSession!,
+              inputString,
+              enteredChallenge!.text,
+            );
+
+            io.to(enteredChallenge!.challengeId).emit(
+              "user-update",
+              enteredTypingSession,
+            );
+
+            if (
+              enteredTypingSession!.correctPosition >=
+              enteredChallenge!.text.length
+            ) {
+              await appService.typingService.updateSessionProgress(
+                enteredTypingSession!.sessionId,
                 enteredTypingSession!,
-                inputString,
-                enteredChallenge!.text,
-                appService,
-                socket,
               );
-
-              if (
-                enteredTypingSession!.correctPosition >=
-                enteredChallenge!.text.length
-              ) {
-                await appService.challengeService.updateChallengeStatus(
-                  user.userId,
-                  enteredChallenge!.challengeId,
-                  UserChallengeStatus.Completed,
-                );
-                await updateChallengeRoom(
-                  enteredChallenge!.challengeId,
-                  appService,
-                  io,
-                );
-              }
-            } finally {
-              userUpdateTimeout = null;
-            }
-          }, BatchUserUpdateInterval);
-        }
-
-        if (typedText.length >= BatchRoomUpdateLength || !roomUpdateTimeout) {
-          if (roomUpdateTimeout) clearTimeout(roomUpdateTimeout);
-
-          roomUpdateTimeout = setTimeout(async () => {
-            try {
-              await updateChallengeRoom(
+              await appService.challengeService.updateChallengeStatus(
+                user.userId,
                 enteredChallenge!.challengeId,
-                appService,
-                io,
+                UserChallengeStatus.Completed,
               );
-            } finally {
-              roomUpdateTimeout = null;
             }
-          }, BatchRoomUpdateInterval);
+            userUpdateTimeout = null;
+          }, MaxUserUpdateWaitDuration);
         }
-      } catch (error) {
-        socket.emit("error", "Failed to process input");
-        console.error("Typing error:", error);
-      }
-    });
+      }),
+    );
 
-    socket.on("leave-challenge", async () => {
-      try {
+    socket.on(
+      "leave-challenge",
+      asyncHandler(async () => {
         if (!enteredChallenge) return;
 
         socket.leave(enteredChallenge.challengeId);
-
         if (enteredTypingSession) {
-          await appService.typingService.exitSession(
+          await appService.typingService.deleteTypingSession(
             enteredTypingSession.sessionId,
-            user.userId,
           );
         }
 
@@ -321,31 +336,21 @@ export default function initializeSockets(io: Server, appService: AppService) {
           UserChallengeStatus.Abandoned,
         );
 
-        const participant =
-          await appService.challengeService.getChallengeParticipant(
-            enteredChallenge.challengeId,
-            user.userId,
-          );
-
-        io.to(enteredChallenge.challengeId).emit("left", participant);
-        await updateChallengeRoom(enteredChallenge.challengeId, appService, io);
-      } finally {
+        io.to(enteredChallenge.challengeId).emit("left", enteredTypingSession);
         enteredChallenge = null;
         enteredTypingSession = null;
-      }
-    });
+      }),
+    );
 
     socket.on("disconnect", async () => {
-      if (enteredChallenge) {
-        const participant =
-          await appService.challengeService.getChallengeParticipant(
-            enteredChallenge?.challengeId,
-            user.userId,
+      (async () => {
+        if (enteredTypingSession) {
+          await appService.typingService.updateSessionProgress(
+            enteredTypingSession.sessionId,
+            enteredTypingSession,
           );
-        socket.emit("left", participant);
-      }
-      if (userUpdateTimeout) clearTimeout(userUpdateTimeout);
-      if (roomUpdateTimeout) clearTimeout(roomUpdateTimeout);
+        }
+      })().catch((err) => handleError(socket, err.message));
     });
   });
 }

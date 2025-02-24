@@ -27,15 +27,6 @@ import {
 
 import { DatabaseError, NotFoundError } from "../errors";
 
-const ParticipantsSelection = {
-  userId: TypingSessionsTable.userId,
-  wpm: TypingSessionsTable.wpm,
-  correctPosition: TypingSessionsTable.correctPosition,
-  endTime: TypingSessionsTable.endTime,
-  startTime: TypingSessionsTable.startTime,
-  accuracy: TypingSessionsTable.accuracy,
-};
-
 const CreatedChallengeSelection = {
   challengeId: ChallengesTable.challengeId,
   createdBy: ChallengesTable.createdBy,
@@ -124,24 +115,6 @@ export class ChallengeService {
       .from(ChallengesTable);
 
     return result.count || 0;
-  }
-
-  async getCurrentUserChallenge(userId: string): Promise<UserChallenge | null> {
-    const [userChallenge] = await this.db
-      .select()
-      .from(UserChallengesTable)
-      .where(
-        and(
-          eq(UserChallengesTable.userId, userId),
-          or(
-            eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
-            eq(UserChallengesTable.status, UserChallengeStatus.Completed),
-          ),
-        ),
-      )
-      .limit(1);
-
-    return userChallenge ?? null;
   }
 
   async getUserChallengeByIds(
@@ -317,7 +290,7 @@ export class ChallengeService {
   async getChallengeParticipants(challengeId: string) {
     return this.db
       .select({
-        ...ParticipantsSelection,
+        ...getTableColumns(TypingSessionsTable),
         username: UsersTable.username,
       })
       .from(TypingSessionsTable)
@@ -325,28 +298,28 @@ export class ChallengeService {
       .where(eq(TypingSessionsTable.challengeId, challengeId));
   }
 
-  async getChallengeParticipant(challengeId: string, userId: string) {
-    const [challengeParticipant] = await this.db
-      .select({
-        ...getTableColumns(UserChallengesTable),
-        username: UsersTable.username,
-      })
-      .from(UserChallengesTable)
-      .innerJoin(UsersTable, eq(UserChallengesTable.userId, UsersTable.userId))
-      .where(
-        and(
-          eq(UserChallengesTable.challengeId, challengeId),
-          eq(UserChallengesTable.userId, userId),
-          or(
-            eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
-            eq(UserChallengesTable.status, UserChallengeStatus.Completed),
-          ),
-        ),
-      )
-      .limit(1);
+  // async getChallengeParticipant(challengeId: string, userId: string) {
+  //   const [challengeParticipant] = await this.db
+  //     .select({
+  //       ...getTableColumns(UserChallengesTable),
+  //       username: UsersTable.username,
+  //     })
+  //     .from(UserChallengesTable)
+  //     .innerJoin(UsersTable, eq(UserChallengesTable.userId, UsersTable.userId))
+  //     .where(
+  //       and(
+  //         eq(UserChallengesTable.challengeId, challengeId),
+  //         eq(UserChallengesTable.userId, userId),
+  //         or(
+  //           eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
+  //           eq(UserChallengesTable.status, UserChallengeStatus.Completed),
+  //         ),
+  //       ),
+  //     )
+  //     .limit(1);
 
-    return challengeParticipant ?? null;
-  }
+  //   return challengeParticipant ?? null;
+  // }
 
   async getChallengeParticipantsCount(challengeId: string): Promise<number> {
     const [result] = await this.db
@@ -371,6 +344,32 @@ export class ChallengeService {
 
     if (!updated) throw new NotFoundError("Challenge not found");
     return updated;
+  }
+
+  async startUnstartedChallenge(challengeId: string) {
+    return await this.db.transaction(async (tx) => {
+      const [challenge] = await tx
+        .select()
+        .from(ChallengesTable)
+        .where(eq(ChallengesTable.challengeId, challengeId))
+        .limit(1);
+
+      if (!challenge) {
+        throw new NotFoundError("Challenge not found");
+      }
+
+      if (challenge.startedAt) {
+        return null;
+      }
+
+      const [updatedChallenge] = await tx
+        .update(ChallengesTable)
+        .set({ startedAt: new Date() })
+        .where(eq(ChallengesTable.challengeId, challengeId))
+        .returning();
+
+      return updatedChallenge ?? null;
+    });
   }
 
   async getUnstartedChallenges() {

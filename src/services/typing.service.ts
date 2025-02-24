@@ -1,9 +1,10 @@
 import { type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { eq, and, not, isNotNull } from "drizzle-orm";
+import { eq, and, not, isNotNull, getTableColumns } from "drizzle-orm";
 import {
   ChallengesTable,
   type TypingSession,
   TypingSessionsTable,
+  UsersTable,
 } from "../db/schema/db.schema";
 import { NotFoundError } from "../errors";
 
@@ -64,6 +65,24 @@ export class TypingService {
     return session ?? null;
   }
 
+  async getTypingSessionWithUsername(challengeId: string, userId: string) {
+    const [session] = await this.db
+      .select({
+        ...getTableColumns(TypingSessionsTable),
+        username: UsersTable.username,
+      })
+      .from(TypingSessionsTable)
+      .innerJoin(UsersTable, eq(TypingSessionsTable.userId, UsersTable.userId))
+      .where(
+        and(
+          eq(TypingSessionsTable.userId, userId),
+          eq(TypingSessionsTable.challengeId, challengeId),
+        ),
+      )
+      .limit(1);
+    return session ?? null;
+  }
+
   async updateSessionProgress(
     sessionId: string,
     update: Partial<TypingSession>,
@@ -78,15 +97,10 @@ export class TypingService {
     return session;
   }
 
-  async exitSession(sessionId: string, userId: string): Promise<TypingSession> {
+  async deleteTypingSession(sessionId: string): Promise<TypingSession> {
     const [session] = await this.db
       .delete(TypingSessionsTable)
-      .where(
-        and(
-          eq(TypingSessionsTable.sessionId, sessionId),
-          eq(TypingSessionsTable.userId, userId),
-        ),
-      )
+      .where(eq(TypingSessionsTable.sessionId, sessionId))
       .returning();
 
     return session || null;
