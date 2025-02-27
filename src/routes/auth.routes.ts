@@ -1,5 +1,5 @@
 import express from "express";
-import { login, signup } from "../services/auth";
+import { getCurrentUser, login, signup } from "../services/auth";
 import { z } from "zod";
 
 const router = express.Router();
@@ -48,6 +48,11 @@ router.post("/logout", (req, res) => {
   req.session?.destroy(() => {
     res.status(200).send("Logged out");
   });
+});
+
+router.get("/current", (req, res) => {
+  const user = getCurrentUser(req.session) || null;
+  return res.status(200).send(user);
 });
 
 export default router;

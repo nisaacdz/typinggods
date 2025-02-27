@@ -87,6 +87,7 @@ export const ChallengePrivacyEnum = pgEnum(
  */
 export const ChallengesTable = pgTable("challenges", {
   challengeId: uuid("challenge_id").defaultRandom().primaryKey(),
+  challengeTitle: varchar("challenge_title", { length: 100 }).notNull(),
   text: text("text").notNull(),
   createdBy: uuid("created_by")
     .notNull()
@@ -201,9 +202,11 @@ export const UserStatsTable = pgTable("user_stats", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => UsersTable.userId),
-  totalCompleted: integer("total_completed").notNull().default(0),
-  averageWpm: integer("average_wpm").notNull().default(0),
-  averageAccuracy: integer("average_accuracy").notNull().default(0),
-  totalKeystrokes: integer("total_keystrokes").notNull().default(0),
+  competitions: integer("total_completed").notNull().default(0),
+  wpm: integer("average_wpm").notNull().default(0),
+  accuracy: integer("average_accuracy").notNull().default(0),
+  keystrokes: integer("total_keystrokes").notNull().default(0),
   lastActive: timestamp("last_active"),
 });
+
+export type UserStats = InferSelectModel<typeof UserStatsTable>;

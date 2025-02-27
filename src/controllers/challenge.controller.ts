@@ -4,7 +4,7 @@ import {
   ListedChallenge,
   NewChallenge,
 } from "../db/schema/db.schema";
-import { DefaultPage, DefaultPageSize } from "../util";
+import { DefaultPage, DefaultPageSize } from "../../util";
 import { getCurrentUser } from "../services/auth";
 import { ChallengeService } from "../services/challenge.service";
 import { generateTypingText } from "../services/text";
@@ -20,7 +20,7 @@ export default class ChallengeController {
       return res.status(401).send("Unauthorized");
     }
 
-    const { privacy, scheduledAt, duration } = req.body;
+    const { privacy, scheduledAt, duration, title } = req.body;
 
     const text = generateTypingText();
 
@@ -28,6 +28,7 @@ export default class ChallengeController {
       privacy,
       createdBy: user.userId,
       text,
+      challengeTitle: title,
       scheduledAt,
       duration,
     };
@@ -116,21 +117,17 @@ export default class ChallengeController {
   }
 
   async getChallenges(req: Request, res: Response) {
-    const page = req.query.page
-      ? parseInt(req.query.page as string)
-      : DefaultPage;
-    const pageSize = req.query.pageSize
-      ? parseInt(req.query.pageSize as string)
-      : DefaultPageSize;
-
-    const challenges = await this.challengeService.getChallenges(
-      page,
-      pageSize,
-    );
-    const totalChallenges = await this.challengeService.getTotalChallenges();
-    const totalPages = Math.ceil(totalChallenges / pageSize);
-
-    return res.status(200).send({ challenges, totalPages });
+    const user = getCurrentUser(req.session);
+    try {
+      const challenges = await this.challengeService.getChallenges(
+        req.query as any,
+        user?.userId,
+      );
+      return res.status(200).send(challenges);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).send("Internal Server Error");
+    }
   }
 
   async getChallengeText(req: Request, res: Response) {

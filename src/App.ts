@@ -1,6 +1,6 @@
 import express from "express";
 import session from "express-session";
-import Env from "./config/app.keys";
+import Env from "../config/app.keys";
 import { initializeRoutes } from "./routes/app.routes";
 import cors from "cors";
 import { createServer } from "http";
@@ -10,6 +10,7 @@ import { AppService } from "./services/index.service";
 import { db } from "./db";
 import { getCurrentUser } from "./services/auth";
 import AuthRoutes from "./routes/auth.routes";
+import { handleError } from "../util";
 
 const appService = new AppService(db);
 const app = express();
@@ -21,7 +22,7 @@ app.use(
   cors({
     origin: "http://localhost:3000",
     credentials: true,
-  })
+  }),
 );
 
 const sessionMiddleware = session({
@@ -73,7 +74,8 @@ io.engine.use(sessionMiddleware);
 io.use(async (socket, next) => {
   const user = getCurrentUser(socket.request.session);
   if (!user) {
-    return console.log("wierd, something not right!");
+    handleError(socket, "Unauthorized");
+    return socket.disconnect(true);
   }
   next();
 });
@@ -89,11 +91,11 @@ app.use(
     err: Error,
     req: express.Request,
     res: express.Response,
-    next: express.NextFunction
+    next: express.NextFunction,
   ) => {
     console.error(err.stack);
     res.status(500).json({ error: "Something broke!" });
-  }
+  },
 );
 
 if (process.env.NODE_ENV !== "production") {

@@ -9,7 +9,7 @@ import {
   animals,
 } from "unique-names-generator";
 import { Session, SessionData } from "express-session";
-import { EmailSchema, PasswordSchema } from "../util";
+import { EmailSchema, PasswordSchema } from "../../util";
 
 function generateUsername(): string {
   return uniqueNamesGenerator({
@@ -45,7 +45,7 @@ export async function login(username: string, password: string) {
 
 export async function signup(
   emailUnvalidated: string,
-  passwordRawUnvalidated: string
+  passwordRawUnvalidated: string,
 ): Promise<LocalUser | null> {
   const { email } = EmailSchema.parse({ email: emailUnvalidated });
   const { password: passwordRaw } = PasswordSchema.parse({
@@ -66,7 +66,7 @@ export async function signup(
 }
 
 export function getCurrentUser(
-  session: (Session & Partial<SessionData>) | undefined
+  session: (Session & Partial<SessionData>) | undefined,
 ): LocalUser | null {
   return session?.user || null;
 }

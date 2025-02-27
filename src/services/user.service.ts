@@ -5,6 +5,7 @@ import {
   type TypingSession,
   UsersTable,
   UserStatsTable,
+  UserStats,
   NewUser,
 } from "../db/schema/db.schema";
 import { DatabaseError, NotFoundError, ConflictError } from "../errors";
@@ -23,7 +24,7 @@ export class UserService {
     } catch (err) {
       if (err instanceof Error && err.message.includes("unique")) {
         throw new ConflictError(
-          "User with this email or username already exists"
+          "User with this email or username already exists",
         );
       }
       throw new DatabaseError("Failed to create user");
@@ -47,6 +48,16 @@ export class UserService {
       .where(eq(UsersTable.username, username))
       .limit(1);
     return user || null;
+  }
+
+  async getUserStats(userId: string): Promise<UserStats | null> {
+    const [stats] = await this.db
+      .select()
+      .from(UserStatsTable)
+      .where(eq(UserStatsTable.userId, userId))
+      .limit(1);
+
+    return stats || null;
   }
 
   // async updateUser(userId: string, updateData: Partial<User>): Promise<User> {

@@ -7,6 +7,12 @@ import {
   UserChallengeStatusType,
 } from "../db/schema/db.schema";
 import { getCurrentUser } from "../services/auth";
+import {
+  delay,
+  handleError,
+  isValidInput,
+  ScheduleTypingResult,
+} from "../../util";
 
 const MaxUserUpdateWaitDuration = 100;
 const MaxUserUpdateInputLength = 5;
@@ -17,26 +23,6 @@ const EnterableUserChallengeStatuses: UserChallengeStatusType[] = [
 
 const scheduledChallenges = new Set<string>();
 const startedChallenges: Record<string, Challenge> = {};
-
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Improvement 1: Central error handler
-const handleError = (socket: Socket, errorMessage: string) => {
-  socket.emit("error", errorMessage);
-  console.error(`Socket Error (${socket.id}): ${errorMessage}`);
-};
-
-// Improvement 3: Input validation helper
-const isValidInput = (character: unknown): character is string => {
-  return typeof character === "string" && character.length === 1;
-};
-
-enum ScheduleTypingResult {
-  AlreadyStarted,
-  AlreadyScheduled,
-  Success,
-  Failed,
-}
 
 const scheduleTypingChallengeStart = (
   enteredChallenge: Challenge,
@@ -163,11 +149,7 @@ const updateUserTypingSession = (
 
 export default function initializeSockets(io: Server, appService: AppService) {
   io.on("connection", (socket) => {
-    const user = getCurrentUser(socket.request.session);
-    if (!user) {
-      handleError(socket, "Unauthorized");
-      return socket.disconnect(true);
-    }
+    const user = getCurrentUser(socket.request.session)!;
 
     let enteredChallenge: Challenge | null = null;
     let enteredTypingSession: (TypingSession & { username: string }) | null =
@@ -236,7 +218,6 @@ export default function initializeSockets(io: Server, appService: AppService) {
                 enteredChallenge.challengeId,
               );
             socket.emit("start-challenge", {
-              // Changed to socket.emit
               challengeId: enteredChallenge.challengeId,
               typingText: enteredChallenge.text,
               participants,

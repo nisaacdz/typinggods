@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response, Router } from "express";
 import joi from "joi";
-import { joiValidatorOptions } from "../config/app.config";
+import { joiValidatorOptions } from "../../config/app.config";
 import { CLIENT_ERROR } from "../extensions/utils/error-response-message.utils";
 import BaseRouterMiddleware from "./base-middleware/base-router.middleware";
 

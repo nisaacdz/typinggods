@@ -10,13 +10,9 @@ export function initializeRoutes(app: Express, appService: AppService) {
     res.status(200).json({ status: "OK" });
   });
 
-  const userRoutes = new UserRoutes(appService.userService);
+  const userRoutes = new UserRoutes(appService);
   const challengeRoutes = new ChallengeRoutes(appService.challengeService);
   const typingSessionRoutes = new TypingRoutes(appService.typingService);
-
-  app.get(
-    "/current", new UserController(appService.userService).getAuthenticatedUser,
-  );
 
   app.use("/users", userRoutes.getRouter());
   app.use("/challenges", challengeRoutes.getRouter());

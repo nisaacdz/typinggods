@@ -15,6 +15,13 @@
       "when": 1739799175251,
       "tag": "0001_dear_mister_fear",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1740685948867,
+      "tag": "0002_cloudy_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

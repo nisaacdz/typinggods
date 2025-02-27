@@ -1,6 +1,6 @@
 import joi from "joi";
-import { ENVIRONMENTS } from "../../config/app.config";
-import Env, { IEnv } from "../../config/app.keys";
+import { ENVIRONMENTS } from "../../../config/app.config";
+import Env, { IEnv } from "../../../config/app.keys";
 
 function validateEnvironmentVariables() {
   try {

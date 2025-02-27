@@ -1,7 +1,7 @@
 import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
-import Env from "../config/app.keys";
+import Env from "../../config/app.keys";
 import { logger } from "../extensions/helpers/logger.helper";
 
 async function main() {

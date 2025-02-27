@@ -1,6 +1,6 @@
 import App from "./App";
-import { ENVIRONMENTS } from "./config/app.config";
-import Env from "./config/app.keys";
+import { ENVIRONMENTS } from "../config/app.config";
+import Env from "../config/app.keys";
 import { logger } from "./extensions/helpers/logger.helper";
 import validateEnvironmentVariables from "./extensions/utils/env-validator";
 

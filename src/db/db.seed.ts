@@ -123,6 +123,7 @@ const seedChallenges = async () => {
         text: faker.lorem.words(24),
         scheduledAt,
         duration,
+        challengeTitle: faker.lorem.words(3),
       };
     },
   );

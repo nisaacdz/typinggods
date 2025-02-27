@@ -9,6 +9,7 @@ import {
   gt,
   getTableColumns,
   asc,
+  ilike,
 } from "drizzle-orm";
 import {
   type Challenge,
@@ -25,10 +26,17 @@ import {
   UsersTable,
 } from "../db/schema/db.schema";
 
-import { DatabaseError, NotFoundError } from "../errors";
+import { NotFoundError } from "../errors";
+import {
+  ChallengeFilter,
+  Meta,
+  PaginatedData,
+  UserChallengeFilter,
+} from "../../util";
 
 const CreatedChallengeSelection = {
   challengeId: ChallengesTable.challengeId,
+  challengeTitle: ChallengesTable.challengeTitle,
   createdBy: ChallengesTable.createdBy,
   createdAt: ChallengesTable.createdAt,
   scheduledAt: ChallengesTable.scheduledAt,
@@ -39,6 +47,7 @@ const CreatedChallengeSelection = {
 
 const ListedChallengeSelection = {
   challengeId: ChallengesTable.challengeId,
+  challengeTitle: ChallengesTable.challengeTitle,
   createdBy: {
     userId: UsersTable.userId,
     username: UsersTable.username,
@@ -75,12 +84,32 @@ export class ChallengeService {
   }
 
   async getChallenges(
-    page: number,
-    pageSize: number,
-    sortBy?: string,
-    filter?: string,
-  ): Promise<ListedChallenge[]> {
-    const result = await this.db
+    { page, pageSize, filter }: Meta<ChallengeFilter>,
+    userId?: string,
+  ): Promise<PaginatedData<ListedChallenge>> {
+    // In the future we may need to change implemenations based on whether the user is logged in
+    // probably show the challenges in the order: created by user, joined by user, open challenges
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [
+      filter?.privacy ? eq(ChallengesTable.privacy, filter.privacy) : undefined,
+      filter?.search
+        ? or(
+            ilike(UsersTable.username, `%${filter.search}%`),
+            ilike(ChallengesTable.challengeTitle, `%${filter.search}%`),
+          )
+        : undefined,
+    ].filter(Boolean);
+
+    const [totalItemsResult] = await this.db
+      .select({ count: count() })
+      .from(ChallengesTable)
+      .where(and(...conditions));
+
+    const totalItems = totalItemsResult.count;
+    const totalPages = Math.ceil(totalItems / pageSize);
+
+    const data = await this.db
       .select({
         ...ListedChallengeSelection,
         createdBy: {
@@ -101,20 +130,19 @@ export class ChallengeService {
         UserChallengesTable,
         eq(ChallengesTable.challengeId, UserChallengesTable.challengeId),
       )
+      .where(and(...conditions))
       .groupBy(ChallengesTable.challengeId, UsersTable.userId)
       .orderBy(asc(ChallengesTable.scheduledAt))
       .limit(pageSize)
-      .offset(page * pageSize);
+      .offset(offset);
 
-    return result;
-  }
-
-  async getTotalChallenges(): Promise<number> {
-    const [result] = await this.db
-      .select({ count: count() })
-      .from(ChallengesTable);
-
-    return result.count || 0;
+    return {
+      page,
+      pageSize,
+      totalPages,
+      totalItems,
+      data,
+    };
   }
 
   async getUserChallengeByIds(
@@ -133,6 +161,73 @@ export class ChallengeService {
       .limit(1);
 
     return userChallenge ?? null;
+  }
+
+  async getUserChallenges(
+    { page, pageSize, filter }: Meta<UserChallengeFilter>,
+    userId: string,
+  ): Promise<PaginatedData<UserChallenge>> {
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [
+      eq(UserChallengesTable.userId, userId),
+      filter?.status
+        ? eq(UserChallengesTable.status, filter.status)
+        : undefined,
+      filter?.privacy ? eq(ChallengesTable.privacy, filter.privacy) : undefined,
+      filter?.search
+        ? or(
+            ilike(UsersTable.username, `%${filter.search}%`),
+            ilike(ChallengesTable.challengeTitle, `%${filter.search}%`),
+          )
+        : undefined,
+    ].filter(Boolean);
+
+    const [totalItemsResult] = await this.db
+      .select({ count: count() })
+      .from(UserChallengesTable)
+      .innerJoin(
+        ChallengesTable,
+        eq(UserChallengesTable.challengeId, ChallengesTable.challengeId),
+      )
+      .where(and(...conditions));
+
+    const totalItems = totalItemsResult.count;
+    const totalPages = Math.ceil(totalItems / pageSize);
+
+    const data = await this.db
+      .select({
+        userId: UserChallengesTable.userId,
+        challengeId: UserChallengesTable.challengeId,
+        status: UserChallengesTable.status,
+        joinedAt: UserChallengesTable.joinedAt,
+        completedAt: UserChallengesTable.completedAt,
+        challengeTitle: ChallengesTable.challengeTitle,
+        privacy: ChallengesTable.privacy,
+        scheduledAt: ChallengesTable.scheduledAt,
+        startedAt: ChallengesTable.startedAt,
+        duration: ChallengesTable.duration,
+        username: UsersTable.username,
+        email: UsersTable.email,
+      })
+      .from(UserChallengesTable)
+      .innerJoin(
+        ChallengesTable,
+        eq(UserChallengesTable.challengeId, ChallengesTable.challengeId),
+      )
+      .innerJoin(UsersTable, eq(UserChallengesTable.userId, UsersTable.userId))
+      .where(and(...conditions))
+      .orderBy(sql`${UserChallengesTable.joinedAt} DESC`)
+      .limit(pageSize)
+      .offset(offset);
+
+    return {
+      page,
+      pageSize,
+      totalPages,
+      totalItems,
+      data,
+    };
   }
 
   async getActiveChallenges(): Promise<Challenge[]> {
@@ -297,29 +392,6 @@ export class ChallengeService {
       .innerJoin(UsersTable, eq(TypingSessionsTable.userId, UsersTable.userId))
       .where(eq(TypingSessionsTable.challengeId, challengeId));
   }
-
-  // async getChallengeParticipant(challengeId: string, userId: string) {
-  //   const [challengeParticipant] = await this.db
-  //     .select({
-  //       ...getTableColumns(UserChallengesTable),
-  //       username: UsersTable.username,
-  //     })
-  //     .from(UserChallengesTable)
-  //     .innerJoin(UsersTable, eq(UserChallengesTable.userId, UsersTable.userId))
-  //     .where(
-  //       and(
-  //         eq(UserChallengesTable.challengeId, challengeId),
-  //         eq(UserChallengesTable.userId, userId),
-  //         or(
-  //           eq(UserChallengesTable.status, UserChallengeStatus.Accepted),
-  //           eq(UserChallengesTable.status, UserChallengeStatus.Completed),
-  //         ),
-  //       ),
-  //     )
-  //     .limit(1);
-
-  //   return challengeParticipant ?? null;
-  // }
 
   async getChallengeParticipantsCount(challengeId: string): Promise<number> {
     const [result] = await this.db
