@@ -5,10 +5,9 @@ import {
   NewChallenge,
 } from "../db/schema/db.schema";
 import { DefaultPage, DefaultPageSize } from "../util";
-import { getCurrentUser, login } from "../services/auth";
+import { getCurrentUser } from "../services/auth";
 import { ChallengeService } from "../services/challenge.service";
 import { generateTypingText } from "../services/text";
-import { db } from "../db";
 
 export default class ChallengeController {
   constructor(private readonly challengeService: ChallengeService) {
@@ -55,11 +54,8 @@ export default class ChallengeController {
   async getChallenge(req: Request, res: Response) {
     let user = getCurrentUser(req.session);
     if (!user) {
-      user = await login("password", "username");
-      //return res.status(401).send("Unauthorized");
+      return res.status(401).send("Unauthorized");
     }
-
-    user = user!;
 
     const challengeId = req.params.id;
     const challenge = await this.challengeService.getChallengeById(challengeId);
@@ -85,10 +81,8 @@ export default class ChallengeController {
     const challengeId = req.params.id;
     let user = getCurrentUser(req.session);
     if (!user) {
-      user = await login("password", "username");
-      //return res.status(401).send("Unauthorized");
+      return res.status(401).send("Unauthorized");
     }
-    user = user!;
     const challenge = await this.challengeService.getChallengeById(challengeId);
 
     if (!challenge) {
@@ -140,10 +134,10 @@ export default class ChallengeController {
   }
 
   async getChallengeText(req: Request, res: Response) {
-    // const user = getCurrentUser(req.session);
-    // if (!user) {
-    //   return res.status(401).send("Unauthorized");
-    // }
+    const user = getCurrentUser(req.session);
+    if (!user) {
+      return res.status(401).send("Unauthorized");
+    }
 
     const challengeId = req.params.id;
     const challenge = await this.challengeService.getChallengeById(challengeId);
@@ -152,15 +146,15 @@ export default class ChallengeController {
       return res.status(404).send("Challenge not found");
     }
 
-    // if (challenge.privacy === ChallengePrivacy.Invitational) {
-    //   const userChallenge = await this.challengeService.getUserChallenge(
-    //     user.userId,
-    //     challengeId,
-    //   );
-    //   if (!userChallenge) {
-    //     return res.status(403).send("Unauthorized");
-    //   }
-    // }
+    if (challenge.privacy === ChallengePrivacy.Invitational) {
+      const userChallenge = await this.challengeService.getUserChallengeByIds(
+        user.userId,
+        challengeId,
+      );
+      if (!userChallenge) {
+        return res.status(403).send("Unauthorized");
+      }
+    }
 
     return res.status(200).send({ text: challenge.text });
   }

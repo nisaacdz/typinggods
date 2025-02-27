@@ -8,7 +8,8 @@ import { Server } from "socket.io";
 import initializeSockets from "./sockets";
 import { AppService } from "./services/index.service";
 import { db } from "./db";
-import { getCurrentUser, login } from "./services/auth";
+import { getCurrentUser } from "./services/auth";
+import AuthRoutes from "./routes/auth.routes";
 
 const appService = new AppService(db);
 const app = express();
@@ -20,7 +21,7 @@ app.use(
   cors({
     origin: "http://localhost:3000",
     credentials: true,
-  }),
+  })
 );
 
 const sessionMiddleware = session({
@@ -28,16 +29,14 @@ const sessionMiddleware = session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === "production", // Use secure cookies in production
+    secure: process.env.NODE_ENV === "production",
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    maxAge: 24 * 60 * 60 * 1000,
   },
 });
 
-// Session configuration
 app.use(sessionMiddleware);
 
-// Public routes
 app.get("/", (_req, res) => {
   res.status(200).send("<h1>Welcome</h1>");
 });
@@ -47,37 +46,21 @@ app.get(Env.API_PATH + "/health", (_req, res) => {
   res.status(200).send(response);
 });
 
-// Example login route
-app.post("/login", async (req, res) => {
-  try {
-    const { password, username } = req.body;
-    const user = await login(password, username);
-    if (!user || !req.session) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-    req.session.user = user;
-    res.status(200).json(user);
-  } catch (error) {
-    res.status(500).json({ error: "Login failed" });
-  }
-});
+app.use("/auth", AuthRoutes);
 
-// Apply authentication to protected routes
 app.use("/", async (req, res, next) => {
   let user = getCurrentUser(req.session);
   if (!user) {
-    user = await login("password", "username");
-    req.session!.user = user;
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
   next();
 });
 
-// Initialize your routes
 initializeRoutes(app, appService);
 
 const httpServer = createServer(app);
 
-// Socket.io setup with session support
 const io = new Server(httpServer, {
   cors: {
     origin: "http://localhost:3000",
@@ -85,40 +68,32 @@ const io = new Server(httpServer, {
   },
 });
 
-// Share session middleware with Socket.IO
 io.engine.use(sessionMiddleware);
 
-// Authentication middleware
 io.use(async (socket, next) => {
   const user = getCurrentUser(socket.request.session);
-  if (user) {
-    return next();
-  } else if (socket.request.session) {
-    socket.request.session.user = await login("password", "username");
-    return next();
-  } else {
-    return next(new Error("Authentication error"));
+  if (!user) {
+    return console.log("wierd, something not right!");
   }
+  next();
 });
 
 initializeSockets(io, appService);
 
-// 404 handler
 app.all("*", (_req, res) => {
   res.status(404).send("RESOURCE NOT FOUND");
 });
 
-// Error handler
 app.use(
   (
     err: Error,
     req: express.Request,
     res: express.Response,
-    next: express.NextFunction,
+    next: express.NextFunction
   ) => {
     console.error(err.stack);
     res.status(500).json({ error: "Something broke!" });
-  },
+  }
 );
 
 if (process.env.NODE_ENV !== "production") {

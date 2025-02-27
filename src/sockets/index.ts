@@ -6,6 +6,7 @@ import {
   UserChallengeStatus,
   UserChallengeStatusType,
 } from "../db/schema/db.schema";
+import { getCurrentUser } from "../services/auth";
 
 const MaxUserUpdateWaitDuration = 100;
 const MaxUserUpdateInputLength = 5;
@@ -162,7 +163,7 @@ const updateUserTypingSession = (
 
 export default function initializeSockets(io: Server, appService: AppService) {
   io.on("connection", (socket) => {
-    const user = socket.request.session?.user;
+    const user = getCurrentUser(socket.request.session);
     if (!user) {
       handleError(socket, "Unauthorized");
       return socket.disconnect(true);

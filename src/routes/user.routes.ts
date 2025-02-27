@@ -12,14 +12,8 @@ export default class UserRoutes {
   }
 
   private initializeRoutes() {
-    this.router.get("/:id", this.controller.getUser.bind(this.controller));
-    this.router.get(
-      "/",
-      this.controller.getAuthenticatedUser.bind(this.controller),
-    );
-    this.router.put("/:id", this.controller.updateUser.bind(this.controller));
-
-    // Add more routes here
+    this.router.get("/:username", this.controller.getUser.bind(this.controller));
+    this.router.patch("/:username", this.controller.updateUser.bind(this.controller));
   }
 
   getRouter() {
