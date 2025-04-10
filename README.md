@@ -63,3 +63,18 @@ For development, seed the database with demo data:
 ```bash
 npm run seed
 ```
+
+
+## ⚠️ Project Deprecated
+
+This project has been deprecated in favor of a new implementation written in [Rust](https://www.rust-lang.org/).
+
+You can find the new version here: [**Yuxi** by @nisaacdz](https://github.com/nisaacdz/yuxi)
+
+### Why the change?
+
+- 🚀 **Performance improvements**  
+  Rust provides faster and more efficient execution.
+
+- 🛠️ **Fine-grained control over system infrastructure**  
+  Rust allows lower-level control, enabling better tuning of performance and behavior.
